@@ -3,13 +3,13 @@
         If (!([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]"Administrator"))
         {Start-Process PowerShell.exe -ArgumentList ("-NoProfile -ExecutionPolicy Bypass -File `"{0}`"" -f $PSCommandPath) -Verb RunAs
         Exit}
-        $Host.UI.RawUI.WindowTitle = $myInvocation.MyCommand.Definition + " (Administrator)"
+        $Host.UI.RawUI.WindowTitle = "Optimisation par ELIAS (Administrateur)"
         $Host.UI.RawUI.BackgroundColor = "Black"
         $Host.PrivateData.ProgressBackgroundColor = "Black"
         $Host.PrivateData.ProgressForegroundColor = "White"
         Clear-Host
         Write-Host "========================================"
-        Write-Host "   WinSux - Optimisation par ELIAS"
+        Write-Host "   Optimisation par ELIAS"
         Write-Host "========================================`n"
 
         # SCRIPT CHECK INTERNET
@@ -19,10 +19,8 @@
         exit
         }
 
-        # SCRIPT SILENT
-        $progresspreference = 'silentlycontinue'
-
         Write-Host "Telechargement`n"
+        Write-Progress -Id 1 -Activity "Optimisation en cours" -Status "Telechargement" -PercentComplete 0
 
 # use local temp files if running from a cloned folder, otherwise download from github
 $repo = "scumpoff/WinSux"
@@ -37,13 +35,22 @@ if ($useLocal) {
 Copy-Item -Path "$localTemp\*" -Destination $dest -Force
 } else {
 $files = (IRM "https://api.github.com/repos/$repo/contents/$path").download_url
+$totalFiles = $files.Count
+$i = 0
 foreach ($url in $files) {
+$i++
 $filename = $url.Split("/")[-1]
+Write-Progress -Id 2 -ParentId 1 -Activity "Telechargement des fichiers" -Status "$filename ($i/$totalFiles)" -PercentComplete (($i / $totalFiles) * 100)
+$oldProgressPreference = $ProgressPreference
+$ProgressPreference = 'SilentlyContinue'
 IWR $url -OutFile "$dest\$filename"
+$ProgressPreference = $oldProgressPreference
 }
+Write-Progress -Id 2 -Activity "Telechargement des fichiers" -Completed
 }
 
         Write-Host "Installation de 7-Zip`n"
+        Write-Progress -Id 1 -Activity "Optimisation en cours" -Status "Installation de 7-Zip" -PercentComplete 17
         ## explorer "https://www.7-zip.org"
 
 # install 7zip
@@ -58,23 +65,35 @@ Move-Item -Path "$env:ProgramData\Microsoft\Windows\Start Menu\Programs\7-Zip\7-
 Remove-Item "$env:ProgramData\Microsoft\Windows\Start Menu\Programs\7-Zip" -Recurse -Force -ErrorAction SilentlyContinue | Out-Null
 
         Write-Host "Installation de C++`n"
+        Write-Progress -Id 1 -Activity "Optimisation en cours" -Status "Installation de C++" -PercentComplete 33
 		## explorer "https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist?view=msvc-170"
 
 # install c++
-Start-Process -Wait "$env:SystemRoot\Temp\vcredist2005_x86.exe" -ArgumentList "/Q /C:`"msiexec /i vcredist.msi /qn /norestart`"" -WindowStyle Hidden
-Start-Process -Wait "$env:SystemRoot\Temp\vcredist2005_x64.exe" -ArgumentList "/Q /C:`"msiexec /i vcredist.msi /qn /norestart`"" -WindowStyle Hidden
-Start-Process -Wait "$env:SystemRoot\Temp\vcredist2008_x86.exe" -ArgumentList "/q" -WindowStyle Hidden
-Start-Process -Wait "$env:SystemRoot\Temp\vcredist2008_x64.exe" -ArgumentList "/q" -WindowStyle Hidden
-Start-Process -Wait "$env:SystemRoot\Temp\vcredist2010_x86.exe" -ArgumentList "/quiet /norestart" -WindowStyle Hidden
-Start-Process -Wait "$env:SystemRoot\Temp\vcredist2010_x64.exe" -ArgumentList "/quiet /norestart" -WindowStyle Hidden
-Start-Process -Wait "$env:SystemRoot\Temp\vcredist2012_x86.exe" -ArgumentList "/quiet /norestart" -WindowStyle Hidden
-Start-Process -Wait "$env:SystemRoot\Temp\vcredist2012_x64.exe" -ArgumentList "/quiet /norestart" -WindowStyle Hidden
-Start-Process -Wait "$env:SystemRoot\Temp\vcredist2013_x86.exe" -ArgumentList "/quiet /norestart" -WindowStyle Hidden
-Start-Process -Wait "$env:SystemRoot\Temp\vcredist2013_x64.exe" -ArgumentList "/quiet /norestart" -WindowStyle Hidden
-Start-Process -Wait "$env:SystemRoot\Temp\vcredist2015_2017_2019_2022_x86.exe" -ArgumentList "/quiet /norestart" -WindowStyle Hidden
-Start-Process -Wait "$env:SystemRoot\Temp\vcredist2015_2017_2019_2022_x64.exe" -ArgumentList "/quiet /norestart" -WindowStyle Hidden 
+$vcredists = @(
+@{File="vcredist2005_x86.exe"; Args="/Q /C:`"msiexec /i vcredist.msi /qn /norestart`""},
+@{File="vcredist2005_x64.exe"; Args="/Q /C:`"msiexec /i vcredist.msi /qn /norestart`""},
+@{File="vcredist2008_x86.exe"; Args="/q"},
+@{File="vcredist2008_x64.exe"; Args="/q"},
+@{File="vcredist2010_x86.exe"; Args="/quiet /norestart"},
+@{File="vcredist2010_x64.exe"; Args="/quiet /norestart"},
+@{File="vcredist2012_x86.exe"; Args="/quiet /norestart"},
+@{File="vcredist2012_x64.exe"; Args="/quiet /norestart"},
+@{File="vcredist2013_x86.exe"; Args="/quiet /norestart"},
+@{File="vcredist2013_x64.exe"; Args="/quiet /norestart"},
+@{File="vcredist2015_2017_2019_2022_x86.exe"; Args="/quiet /norestart"},
+@{File="vcredist2015_2017_2019_2022_x64.exe"; Args="/quiet /norestart"}
+)
+$totalVc = $vcredists.Count
+$i = 0
+foreach ($vc in $vcredists) {
+$i++
+Write-Progress -Id 2 -ParentId 1 -Activity "Installation de C++" -Status "$($vc.File) ($i/$totalVc)" -PercentComplete (($i / $totalVc) * 100)
+Start-Process -Wait "$env:SystemRoot\Temp\$($vc.File)" -ArgumentList $vc.Args -WindowStyle Hidden
+}
+Write-Progress -Id 2 -Activity "Installation de C++" -Completed
 
         Write-Host "DDU`n"
+        Write-Progress -Id 1 -Activity "Optimisation en cours" -Status "Extraction de DDU" -PercentComplete 50
         ## explorer "https://www.wagnardsoft.com/display-driver-uninstaller-ddu"
 
 # extract ddu with 7zip
@@ -128,6 +147,7 @@ Set-ItemProperty -Path "$env:SystemRoot\Temp\ddu\Settings\Settings.xml" -Name Is
 cmd /c "reg add `"HKLM\Software\Microsoft\Windows\CurrentVersion\DriverSearching`" /v `"SearchOrderConfig`" /t REG_DWORD /d `"0`" /f >nul 2>&1"
 
         Write-Host "Installation de Chrome`n"
+        Write-Progress -Id 1 -Activity "Optimisation en cours" -Status "Installation de Chrome" -PercentComplete 67
         ## explorer "https://www.google.com/intl/en_us/chrome"
 
 # install google chrome
@@ -161,6 +181,7 @@ cmd /c "sc delete `"$($service.Name)`" >nul 2>&1"
 Get-ScheduledTask | Where-Object { $_.TaskName -like '*Google*' } | Unregister-ScheduledTask -Confirm:$false -ErrorAction SilentlyContinue
 
         Write-Host "Installation de DirectX`n"
+        Write-Progress -Id 1 -Activity "Optimisation en cours" -Status "Installation de DirectX" -PercentComplete 83
         ## explorer "https://www.microsoft.com/en-au/download/details.aspx?id=35"
 
 # extract directx with 7zip
@@ -185,6 +206,8 @@ cmd /c "reg add `"HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\RunOnce`" /v `"
 # turn on safe boot
 cmd /c "bcdedit /set {current} safeboot minimal >nul 2>&1"
 
+        Write-Progress -Id 1 -Activity "Optimisation en cours" -Status "Redemarrage" -PercentComplete 100
+        Write-Progress -Id 1 -Activity "Optimisation en cours" -Completed
         Write-Host "Redemarrage`n"
 
 # restart

@@ -3,13 +3,13 @@
         If (!([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]"Administrator"))
         {Start-Process PowerShell.exe -ArgumentList ("-NoProfile -ExecutionPolicy Bypass -File `"{0}`"" -f $PSCommandPath) -Verb RunAs
         Exit}
-        $Host.UI.RawUI.WindowTitle = $myInvocation.MyCommand.Definition + " (Administrator)"
+        $Host.UI.RawUI.WindowTitle = "Optimisation par ELIAS (Administrateur)"
         $Host.UI.RawUI.BackgroundColor = "Black"
         $Host.PrivateData.ProgressBackgroundColor = "Black"
         $Host.PrivateData.ProgressForegroundColor = "White"
         Clear-Host
         Write-Host "========================================"
-        Write-Host "   WinSux - Optimisation par ELIAS"
+        Write-Host "   Optimisation par ELIAS"
         Write-Host "========================================`n"
 
         # SCRIPT SILENT
@@ -134,7 +134,7 @@ Remove-Item .\reg1.exe -ErrorAction SilentlyContinue
         ## ms-settings:appsfeatures
         ## powershell -noexit -command "get-appxpackage | select name | format-table -autosize"
 
-Get-AppXPackage -AllUsers | Where-Object {
+$appsToRemove = Get-AppXPackage -AllUsers | Where-Object {
 # breaks file explorer
 $_.Name -notlike '*CBS*' -and
 $_.Name -notlike '*Microsoft.AV1VideoExtension*' -and
@@ -159,13 +159,21 @@ $_.Name -notlike '*Microsoft.WindowsStore*' -and
 $_.Name -notlike '*NVIDIACorp.NVIDIAControlPanel*' -and
 # breaks windows server immersive control panel
 $_.Name -notlike '*windows.immersivecontrolpanel*'
-} | Remove-AppxPackage -ErrorAction SilentlyContinue
+}
+$totalApps = $appsToRemove.Count
+$i = 0
+foreach ($app in $appsToRemove) {
+$i++
+if ($totalApps -gt 0) { Write-Progress -Activity "Suppression des applications UWP" -Status "$($app.Name) ($i/$totalApps)" -PercentComplete (($i / $totalApps) * 100) }
+$app | Remove-AppxPackage -ErrorAction SilentlyContinue
+}
+Write-Progress -Activity "Suppression des applications UWP" -Completed
 
         Write-Host "Suppression des fonctionnalites UWP`n"
         ## ms-settings:optionalfeatures
         ## powershell -noexit -command "dism /online /get-capabilities /format:table"
 
-Get-WindowsCapability -Online | Where-Object {
+$capsToRemove = Get-WindowsCapability -Online | Where-Object {
 $_.Name -notlike '*Microsoft.Windows.Ethernet*' -and
 # windows 10
 $_.Name -notlike '*Microsoft.Windows.MSPaint*' -and
@@ -180,17 +188,23 @@ $_.Name -notlike '*VBSCRIPT*' -and
 $_.Name -notlike '*WMIC*' -and
 # windows 10 breaks uwp snippingtool if removed
 $_.Name -notlike '*Windows.Client.ShellComponents*'
-} | ForEach-Object {
+}
+$totalCaps = $capsToRemove.Count
+$i = 0
+foreach ($cap in $capsToRemove) {
+$i++
+if ($totalCaps -gt 0) { Write-Progress -Activity "Suppression des fonctionnalites UWP" -Status "$($cap.Name) ($i/$totalCaps)" -PercentComplete (($i / $totalCaps) * 100) }
 try {
-Remove-WindowsCapability -Online -Name $_.Name | Out-Null
+Remove-WindowsCapability -Online -Name $cap.Name | Out-Null
 } catch { }
 }
+Write-Progress -Activity "Suppression des fonctionnalites UWP" -Completed
 
         Write-Host "Suppression des fonctionnalites heritees`n"
         ## c:\windows\system32\optionalfeatures.exe
 		## powershell -noexit -command "dism /online /get-features /format:table"
 
-Get-WindowsOptionalFeature -Online | Where-Object {
+$featuresToDisable = Get-WindowsOptionalFeature -Online | Where-Object {
 $_.FeatureName -notlike '*DirectPlay*' -and
 $_.FeatureName -notlike '*LegacyComponents*' -and
 $_.FeatureName -notlike '*NetFx3*' -and
@@ -215,11 +229,17 @@ $_.FeatureName -notlike '*ServerCore-Drivers-General-WOW64*' -and
 $_.FeatureName -notlike '*Server-Gui-Mgmt*' -and
 # breaks windows server nvidia app
 $_.FeatureName -notlike '*WirelessNetworking*'
-} | ForEach-Object {
+}
+$totalFeatures = $featuresToDisable.Count
+$i = 0
+foreach ($feature in $featuresToDisable) {
+$i++
+if ($totalFeatures -gt 0) { Write-Progress -Activity "Suppression des fonctionnalites heritees" -Status "$($feature.FeatureName) ($i/$totalFeatures)" -PercentComplete (($i / $totalFeatures) * 100) }
 try {
-Disable-WindowsOptionalFeature -Online -FeatureName $_.FeatureName -NoRestart -WarningAction SilentlyContinue | Out-Null
+Disable-WindowsOptionalFeature -Online -FeatureName $feature.FeatureName -NoRestart -WarningAction SilentlyContinue | Out-Null
 } catch { }
 }
+Write-Progress -Activity "Suppression des fonctionnalites heritees" -Completed
 
 		Write-Host "Suppression des applications heritees`n"
 		## appwiz.cpl
@@ -973,34 +993,19 @@ $InstallFile = $Dialog.FileName
 & "$env:SystemDrive\Program Files\7-Zip\7z.exe" x "$InstallFile" -o"$env:SystemRoot\Temp\nvidiadriver" -y | Out-Null
 
 # debloat nvidia driver
-Remove-Item "$env:SystemRoot\Temp\nvidiadriver\Display.Nview" -Recurse -Force -ErrorAction SilentlyContinue | Out-Null
-Remove-Item "$env:SystemRoot\Temp\nvidiadriver\FrameViewSDK" -Recurse -Force -ErrorAction SilentlyContinue | Out-Null
-Remove-Item "$env:SystemRoot\Temp\nvidiadriver\HDAudio" -Recurse -Force -ErrorAction SilentlyContinue | Out-Null
-Remove-Item "$env:SystemRoot\Temp\nvidiadriver\MSVCRT" -Recurse -Force -ErrorAction SilentlyContinue | Out-Null
-Remove-Item "$env:SystemRoot\Temp\nvidiadriver\NvApp.MessageBus" -Recurse -Force -ErrorAction SilentlyContinue | Out-Null
-Remove-Item "$env:SystemRoot\Temp\nvidiadriver\NvBackend" -Recurse -Force -ErrorAction SilentlyContinue | Out-Null
-Remove-Item "$env:SystemRoot\Temp\nvidiadriver\NvContainer" -Recurse -Force -ErrorAction SilentlyContinue | Out-Null
-Remove-Item "$env:SystemRoot\Temp\nvidiadriver\NvCpl" -Recurse -Force -ErrorAction SilentlyContinue | Out-Null
-Remove-Item "$env:SystemRoot\Temp\nvidiadriver\NvDLISR" -Recurse -Force -ErrorAction SilentlyContinue | Out-Null
-Remove-Item "$env:SystemRoot\Temp\nvidiadriver\NVPCF" -Recurse -Force -ErrorAction SilentlyContinue | Out-Null
-Remove-Item "$env:SystemRoot\Temp\nvidiadriver\NvTelemetry" -Recurse -Force -ErrorAction SilentlyContinue | Out-Null
-Remove-Item "$env:SystemRoot\Temp\nvidiadriver\NvVAD" -Recurse -Force -ErrorAction SilentlyContinue | Out-Null
-Remove-Item "$env:SystemRoot\Temp\nvidiadriver\PhysX" -Recurse -Force -ErrorAction SilentlyContinue | Out-Null
-Remove-Item "$env:SystemRoot\Temp\nvidiadriver\PPC" -Recurse -Force -ErrorAction SilentlyContinue | Out-Null
-Remove-Item "$env:SystemRoot\Temp\nvidiadriver\ShadowPlay" -Recurse -Force -ErrorAction SilentlyContinue | Out-Null
-Remove-Item "$env:SystemRoot\Temp\nvidiadriver\NvApp\CEF" -Recurse -Force -ErrorAction SilentlyContinue | Out-Null
-Remove-Item "$env:SystemRoot\Temp\nvidiadriver\NvApp\osc" -Recurse -Force -ErrorAction SilentlyContinue | Out-Null
-Remove-Item "$env:SystemRoot\Temp\nvidiadriver\NvApp\Plugins" -Recurse -Force -ErrorAction SilentlyContinue | Out-Null
-Remove-Item "$env:SystemRoot\Temp\nvidiadriver\NvApp\UpgradeConsent" -Recurse -Force -ErrorAction SilentlyContinue | Out-Null
-Remove-Item "$env:SystemRoot\Temp\nvidiadriver\NvApp\www" -Recurse -Force -ErrorAction SilentlyContinue | Out-Null
-Remove-Item "$env:SystemRoot\Temp\nvidiadriver\NvApp\7z.dll" -Force -ErrorAction SilentlyContinue | Out-Null
-Remove-Item "$env:SystemRoot\Temp\nvidiadriver\NvApp\7z.exe" -Force -ErrorAction SilentlyContinue | Out-Null
-Remove-Item "$env:SystemRoot\Temp\nvidiadriver\NvApp\DarkModeCheck.exe" -Force -ErrorAction SilentlyContinue | Out-Null
-Remove-Item "$env:SystemRoot\Temp\nvidiadriver\NvApp\InstallerExtension.dll" -Force -ErrorAction SilentlyContinue | Out-Null
-Remove-Item "$env:SystemRoot\Temp\nvidiadriver\NvApp\NvApp.nvi" -Force -ErrorAction SilentlyContinue | Out-Null
-Remove-Item "$env:SystemRoot\Temp\nvidiadriver\NvApp\NvAppApi.dll" -Force -ErrorAction SilentlyContinue | Out-Null
-Remove-Item "$env:SystemRoot\Temp\nvidiadriver\NvApp\NvAppExt.dll" -Force -ErrorAction SilentlyContinue | Out-Null
-Remove-Item "$env:SystemRoot\Temp\nvidiadriver\NvApp\NvConfigGenerator.dll" -Force -ErrorAction SilentlyContinue | Out-Null
+$nvidiaDebloatItems = @(
+"Display.Nview","FrameViewSDK","HDAudio","MSVCRT","NvApp.MessageBus","NvBackend","NvContainer","NvCpl","NvDLISR","NVPCF","NvTelemetry","NvVAD","PhysX","PPC","ShadowPlay",
+"NvApp\CEF","NvApp\osc","NvApp\Plugins","NvApp\UpgradeConsent","NvApp\www",
+"NvApp\7z.dll","NvApp\7z.exe","NvApp\DarkModeCheck.exe","NvApp\InstallerExtension.dll","NvApp\NvApp.nvi","NvApp\NvAppApi.dll","NvApp\NvAppExt.dll","NvApp\NvConfigGenerator.dll"
+)
+$totalNvidiaItems = $nvidiaDebloatItems.Count
+$i = 0
+foreach ($item in $nvidiaDebloatItems) {
+$i++
+Write-Progress -Activity "Allegement du pilote" -Status "$item ($i/$totalNvidiaItems)" -PercentComplete (($i / $totalNvidiaItems) * 100)
+Remove-Item "$env:SystemRoot\Temp\nvidiadriver\$item" -Recurse -Force -ErrorAction SilentlyContinue | Out-Null
+}
+Write-Progress -Activity "Allegement du pilote" -Completed
 
         Write-Host "Installation du pilote`n"
 
@@ -1314,7 +1319,11 @@ $xmlFiles = @(
 "$env:SystemRoot\Temp\amddriver\Config\InstallUEP.xml"
 "$env:SystemRoot\Temp\amddriver\Config\ModifyLinkUpdate.xml"
 )
+$totalXml = $xmlFiles.Count
+$i = 0
 foreach ($file in $xmlFiles) {
+$i++
+Write-Progress -Activity "Allegement du pilote" -Status "$(Split-Path $file -Leaf) ($i/$totalXml)" -PercentComplete (($i / $totalXml) * 100)
 if (Test-Path $file) {
 $content = Get-Content $file -Raw
 $content = $content -replace '<Enabled>true</Enabled>', '<Enabled>false</Enabled>'
@@ -1322,6 +1331,7 @@ $content = $content -replace '<Hidden>true</Hidden>', '<Hidden>false</Hidden>'
 Set-Content $file -Value $content -NoNewline
 }
 }
+Write-Progress -Activity "Allegement du pilote" -Completed
 
 # edit json files, set installbydefault to no
 $jsonFiles = @(

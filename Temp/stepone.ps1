@@ -3,13 +3,13 @@
         If (!([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]"Administrator"))
         {Start-Process PowerShell.exe -ArgumentList ("-NoProfile -ExecutionPolicy Bypass -File `"{0}`"" -f $PSCommandPath) -Verb RunAs
         Exit}
-        $Host.UI.RawUI.WindowTitle = $myInvocation.MyCommand.Definition + " (Administrator)"
+        $Host.UI.RawUI.WindowTitle = "Optimisation par ELIAS (Administrateur)"
         $Host.UI.RawUI.BackgroundColor = "Black"
         $Host.PrivateData.ProgressBackgroundColor = "Black"
         $Host.PrivateData.ProgressForegroundColor = "White"
         Clear-Host
         Write-Host "========================================"
-        Write-Host "   WinSux - Optimisation par ELIAS"
+        Write-Host "   Optimisation par ELIAS"
         Write-Host "========================================`n"
 
         # FUNCTION RUN AS TRUSTED INSTALLER
@@ -136,14 +136,23 @@ $windowssecuritysettings = @(
 )
 
 # run $windowssecuritysettings as function with trusted installer
+$totalSettings = $windowssecuritysettings.Count
+$i = 0
 foreach ($command in $windowssecuritysettings) {
+    $i++
+    Write-Progress -Id 1 -Activity "Parametres Defender" -Status "Application des parametres (Trusted Installer) $i/$totalSettings" -PercentComplete (($i / $totalSettings) * 100)
     Run-Trusted $command
 }
+Write-Progress -Id 1 -Activity "Parametres Defender" -Completed
 
 # run $windowssecuritysettings as admin
+$i = 0
 foreach ($command in $windowssecuritysettings) {
+    $i++
+    Write-Progress -Id 1 -Activity "Parametres Defender" -Status "Application des parametres (Administrateur) $i/$totalSettings" -PercentComplete (($i / $totalSettings) * 100)
     Invoke-Expression $command
 }
+Write-Progress -Id 1 -Activity "Parametres Defender" -Completed
 
 # disable uac
 cmd /c "reg add `"HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System`" /v `"EnableLUA`" /t REG_DWORD /d `"0`" /f >nul 2>&1"
