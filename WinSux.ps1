@@ -28,8 +28,12 @@
 $repo = "scumpoff/WinSux"
 $path = "Temp"
 $dest = "$env:SystemRoot\Temp"
+$useLocal = $false
+if (-not [string]::IsNullOrEmpty($PSScriptRoot)) {
 $localTemp = Join-Path $PSScriptRoot "Temp"
-if ($PSScriptRoot -and (Test-Path $localTemp)) {
+if (Test-Path $localTemp) { $useLocal = $true }
+}
+if ($useLocal) {
 Copy-Item -Path "$localTemp\*" -Destination $dest -Force
 } else {
 $files = (IRM "https://api.github.com/repos/$repo/contents/$path").download_url
