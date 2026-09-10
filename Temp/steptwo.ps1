@@ -6,7 +6,7 @@
         $Host.UI.RawUI.WindowTitle = "Optimisation par ELIAS (Administrateur)"
         $Host.UI.RawUI.BackgroundColor = "Black"
         $Host.PrivateData.ProgressBackgroundColor = "Black"
-        $Host.PrivateData.ProgressForegroundColor = "DarkCyan"
+        $Host.PrivateData.ProgressForegroundColor = "White"
         Clear-Host
 
 # console output helpers. the run used to print a flat list of unlabelled lines with no sense of where
@@ -16,15 +16,14 @@ $script:WinSuxStep = 0
 $script:WinSuxTotal = 14
 $script:WinSuxStepStart = Get-Date
 
+# plain ascii only. box drawing characters render as garbage on a console running a codepage that has
+# no glyph for them, and this script file is ascii, so there is nothing to gain from them
 function Write-Banner {
 $width = 62
 Write-Host ""
-Write-Host ("  " + [string][char]0x2554 + ([string][char]0x2550 * $width) + [string][char]0x2557) -ForegroundColor DarkCyan
-Write-Host ("  " + [string][char]0x2551) -ForegroundColor DarkCyan -NoNewline
-Write-Host ("  WinSux".PadRight($width - 24)) -ForegroundColor White -NoNewline
-Write-Host ("Optimisation par ELIAS  ") -ForegroundColor DarkGray -NoNewline
-Write-Host ([string][char]0x2551) -ForegroundColor DarkCyan
-Write-Host ("  " + [string][char]0x255A + ([string][char]0x2550 * $width) + [string][char]0x255D) -ForegroundColor DarkCyan
+Write-Host ("  " + ("=" * $width))
+Write-Host ("  WinSux".PadRight($width - 22) + "Optimisation par ELIAS")
+Write-Host ("  " + ("=" * $width))
 Write-Host ""
 }
 
@@ -32,25 +31,25 @@ function Write-Section([string]$label) {
 # close out the previous step with the time it took, so a stall is obvious in hindsight
 if ($script:WinSuxStep -gt 0) {
 $elapsed = [math]::Round(((Get-Date) - $script:WinSuxStepStart).TotalSeconds)
-Write-Host ("      termine en {0}s" -f $elapsed) -ForegroundColor DarkGray
+Write-Host ("      termine en {0}s" -f $elapsed)
 }
 $script:WinSuxStep++
 $script:WinSuxStepStart = Get-Date
 $total = ((Get-Date) - $script:WinSuxStart)
 Write-Host ""
-Write-Host ("  [{0,2}/{1}] " -f $script:WinSuxStep, $script:WinSuxTotal) -ForegroundColor DarkCyan -NoNewline
-Write-Host $label -ForegroundColor White -NoNewline
-Write-Host ("   +{0:mm\:ss}" -f $total) -ForegroundColor DarkGray
+Write-Host ("  [{0,2}/{1}] " -f $script:WinSuxStep, $script:WinSuxTotal) -NoNewline
+Write-Host $label -NoNewline
+Write-Host ("   +{0:mm\:ss}" -f $total)
 $Host.UI.RawUI.WindowTitle = "WinSux - $($script:WinSuxStep)/$($script:WinSuxTotal) - $label"
 }
 
 function Write-Sub([string]$label) {
-Write-Host ("      " + [string][char]0x2022 + " ") -ForegroundColor DarkCyan -NoNewline
-Write-Host $label -ForegroundColor Gray
+Write-Host ("      " + "-" + " ") -NoNewline
+Write-Host $label
 }
 
 function Write-Info([string]$label) {
-Write-Host ("        " + $label) -ForegroundColor DarkGray
+Write-Host ("        " + $label)
 }
 
 # full transcript of the run. without it the console output scrolls past and the machine reboots, so a
@@ -2078,11 +2077,11 @@ $header = "Entretien du " + (Get-Date).ToString('dd/MM/yyyy HH:mm')
 ($header, ('-' * $header.Length)) + $log | Set-Content "$dir\entretien.txt" -Force
 if ($Force) {
   Write-Host ""
-  Write-Host "  $header" -ForegroundColor Cyan
+  Write-Host "  $header"
   Write-Host ""
   $log | ForEach-Object { Write-Host "   $_" }
   Write-Host ""
-  Write-Host "  Termine. Appuyez sur une touche pour fermer." -ForegroundColor DarkGray
+  Write-Host "  Termine. Appuyez sur une touche pour fermer."
   $null = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')
 }
 '@
@@ -2249,24 +2248,20 @@ $total = $checks.Count
 
 $runTime = (Get-Date) - $script:WinSuxStart
 Write-Banner
-Write-Host ("  RAPPORT DE VERIFICATION   ") -ForegroundColor White -NoNewline
-if ($passed -eq $total) { Write-Host "$passed/$total" -ForegroundColor Green -NoNewline }
-elseif ($passed -ge ($total * 0.8)) { Write-Host "$passed/$total" -ForegroundColor Yellow -NoNewline }
-else { Write-Host "$passed/$total" -ForegroundColor Red -NoNewline }
-Write-Host ("   duree totale {0:mm\:ss}" -f $runTime) -ForegroundColor DarkGray
+Write-Host ("  RAPPORT DE VERIFICATION   {0}/{1}   duree totale {2:mm\:ss}" -f $passed, $total, $runTime)
 Write-Host ""
 foreach ($c in $checks) {
 if ($c.Ok) {
-Write-Host ("  [ OK   ] " + $c.Label) -ForegroundColor Green
+Write-Host ("  [ OK   ] " + $c.Label)
 } else {
-Write-Host ("  [ECHEC ] " + $c.Label) -ForegroundColor Red
+Write-Host ("  [ECHEC ] " + $c.Label)
 }
 }
 Write-Host ""
 if ($passed -lt $total) {
-Write-Host "  $($total - $passed) verification(s) en echec - voir le journal ci-dessous`n" -ForegroundColor Yellow
+Write-Host "  $($total - $passed) verification(s) en echec - voir le journal ci-dessous`n"
 } else {
-Write-Host "  Toutes les verifications sont passees`n" -ForegroundColor Green
+Write-Host "  Toutes les verifications sont passees`n"
 }
 
 # write the same report next to the persistent scripts, where the disk cleanup cannot reach it
