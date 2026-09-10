@@ -1485,6 +1485,57 @@ cmd /c "reg add `"HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\StorageSense\Pa
 cmd /c "reg add `"HKCU\Control Panel\Mouse`" /v `"MouseSpeed`" /t REG_SZ /d `"0`" /f >nul 2>&1"
 cmd /c "reg add `"HKCU\Control Panel\Mouse`" /v `"MouseThreshold1`" /t REG_SZ /d `"0`" /f >nul 2>&1"
 cmd /c "reg add `"HKCU\Control Panel\Mouse`" /v `"MouseThreshold2`" /t REG_SZ /d `"0`" /f >nul 2>&1"
+# pointer speed at the 6/11 notch, the only setting where one mouse count moves the cursor exactly one
+# pixel. every other notch multiplies or drops counts before the game ever sees them
+cmd /c "reg add `"HKCU\Control Panel\Mouse`" /v `"MouseSensitivity`" /t REG_SZ /d `"10`" /f >nul 2>&1"
+# linear acceleration curves. MouseSpeed=0 already switches off enhance pointer precision, but windows
+# keeps the old curve blob around and some titles read it back through the legacy pointer api - flatten
+# it so there is no scaling left anywhere
+cmd /c "reg add `"HKCU\Control Panel\Mouse`" /v `"SmoothMouseXCurve`" /t REG_BINARY /d `"0000000000000000C0CC0C0000000000809919000000000040662600000000000033330000000000`" /f >nul 2>&1"
+cmd /c "reg add `"HKCU\Control Panel\Mouse`" /v `"SmoothMouseYCurve`" /t REG_BINARY /d `"0000000000000000000038000000000000007000000000000000A800000000000000E00000000000`" /f >nul 2>&1"
+
+# keyboard: shortest repeat delay and fastest repeat rate
+cmd /c "reg add `"HKCU\Control Panel\Keyboard`" /v `"KeyboardDelay`" /t REG_SZ /d `"0`" /f >nul 2>&1"
+cmd /c "reg add `"HKCU\Control Panel\Keyboard`" /v `"KeyboardSpeed`" /t REG_SZ /d `"31`" /f >nul 2>&1"
+
+# foreground focus: windows holds a 200 second lock before letting an application steal focus, and the
+# desktop waits on hung windows before repainting. these are the settings behind "the alt-tab took a
+# moment" and behind a frozen window blocking the whole shell
+cmd /c "reg add `"HKCU\Control Panel\Desktop`" /v `"ForegroundLockTimeout`" /t REG_DWORD /d `"0`" /f >nul 2>&1"
+cmd /c "reg add `"HKCU\Control Panel\Desktop`" /v `"MenuShowDelay`" /t REG_SZ /d `"0`" /f >nul 2>&1"
+cmd /c "reg add `"HKCU\Control Panel\Desktop`" /v `"AutoEndTasks`" /t REG_SZ /d `"1`" /f >nul 2>&1"
+cmd /c "reg add `"HKCU\Control Panel\Desktop`" /v `"HungAppTimeout`" /t REG_SZ /d `"1000`" /f >nul 2>&1"
+cmd /c "reg add `"HKCU\Control Panel\Desktop`" /v `"WaitToKillAppTimeout`" /t REG_SZ /d `"2000`" /f >nul 2>&1"
+# how long a low-level keyboard/mouse hook may block the input thread before windows skips it. the
+# default is 5 seconds, which is how one badly behaved overlay stalls every input in the system
+cmd /c "reg add `"HKCU\Control Panel\Desktop`" /v `"LowLevelHooksTimeout`" /t REG_DWORD /d `"1000`" /f >nul 2>&1"
+cmd /c "reg add `"HKLM\SYSTEM\CurrentControlSet\Control`" /v `"WaitToKillServiceTimeout`" /t REG_SZ /d `"2000`" /f >nul 2>&1"
+
+# usb host controllers: same treatment as the gpu. MSI mode is already on by default here, but the
+# interrupts land wherever windows feels like - give them a high device priority and spread them
+Get-ChildItem -Path "HKLM:\SYSTEM\ControlSet001\Enum\PCI" -ErrorAction SilentlyContinue | ForEach-Object {
+Get-ChildItem -Path $_.PSPath -ErrorAction SilentlyContinue | ForEach-Object {
+$svc = (Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue).Service
+if ($svc -match 'usbxhci|usbehci|usbohci|usbuhci') {
+$usbPath = ($_.Name -replace 'HKEY_LOCAL_MACHINE', 'HKLM')
+cmd /c "reg add `"$usbPath\Device Parameters\Interrupt Management\MessageSignaledInterruptProperties`" /v `"MSISupported`" /t REG_DWORD /d `"1`" /f >nul 2>&1"
+cmd /c "reg add `"$usbPath\Device Parameters\Interrupt Management\Affinity Policy`" /v `"DevicePriority`" /t REG_DWORD /d `"3`" /f >nul 2>&1"
+cmd /c "reg add `"$usbPath\Device Parameters\Interrupt Management\Affinity Policy`" /v `"DevicePolicy`" /t REG_DWORD /d `"5`" /f >nul 2>&1"
+}
+}
+}
+
+# global usb selective suspend switch, on top of the per-device values set earlier
+cmd /c "reg add `"HKLM\SYSTEM\CurrentControlSet\Services\USB`" /v `"DisableSelectiveSuspend`" /t REG_DWORD /d `"1`" /f >nul 2>&1"
+
+# input class driver queue depth. NOTE: this is one of the tweaks everyone copies and nobody measures.
+# the queue is a burst buffer - it does not add latency unless it is actually full, so shrinking it
+# mainly bounds how many stale packets get processed after a stall. harmless at 1000 Hz, but if you ever
+# run a 4000 or 8000 Hz mouse, raise these back to 100 or you will drop input under load
+foreach ($inputSvc in 'mouclass','kbdclass','mouhid','kbdhid') {
+cmd /c "reg add `"HKLM\SYSTEM\CurrentControlSet\Services\$inputSvc\Parameters`" /v `"MouseDataQueueSize`" /t REG_DWORD /d `"20`" /f >nul 2>&1"
+cmd /c "reg add `"HKLM\SYSTEM\CurrentControlSet\Services\$inputSvc\Parameters`" /v `"KeyboardDataQueueSize`" /t REG_DWORD /d `"20`" /f >nul 2>&1"
+}
 
 # disable audio enhancements on all playback devices (reduces audio processing latency)
 $audioRenderPath = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\MMDevices\Audio\Render"
