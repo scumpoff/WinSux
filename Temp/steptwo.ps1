@@ -6,11 +6,54 @@
         $Host.UI.RawUI.WindowTitle = "Optimisation par ELIAS (Administrateur)"
         $Host.UI.RawUI.BackgroundColor = "Black"
         $Host.PrivateData.ProgressBackgroundColor = "Black"
-        $Host.PrivateData.ProgressForegroundColor = "White"
+        $Host.PrivateData.ProgressForegroundColor = "DarkCyan"
         Clear-Host
-        Write-Host "========================================"
-        Write-Host "   Optimisation par ELIAS"
-        Write-Host "========================================`n"
+
+# console output helpers. the run used to print a flat list of unlabelled lines with no sense of where
+# it was or how long anything took, which is unreadable across a 15 minute unattended run
+$script:WinSuxStart = Get-Date
+$script:WinSuxStep = 0
+$script:WinSuxTotal = 14
+$script:WinSuxStepStart = Get-Date
+
+function Write-Banner {
+$width = 62
+Write-Host ""
+Write-Host ("  " + [string][char]0x2554 + ([string][char]0x2550 * $width) + [string][char]0x2557) -ForegroundColor DarkCyan
+Write-Host ("  " + [string][char]0x2551) -ForegroundColor DarkCyan -NoNewline
+Write-Host ("  WinSux".PadRight($width - 24)) -ForegroundColor White -NoNewline
+Write-Host ("Optimisation par ELIAS  ") -ForegroundColor DarkGray -NoNewline
+Write-Host ([string][char]0x2551) -ForegroundColor DarkCyan
+Write-Host ("  " + [string][char]0x255A + ([string][char]0x2550 * $width) + [string][char]0x255D) -ForegroundColor DarkCyan
+Write-Host ""
+}
+
+function Write-Section([string]$label) {
+# close out the previous step with the time it took, so a stall is obvious in hindsight
+if ($script:WinSuxStep -gt 0) {
+$elapsed = [math]::Round(((Get-Date) - $script:WinSuxStepStart).TotalSeconds)
+Write-Host ("      termine en {0}s" -f $elapsed) -ForegroundColor DarkGray
+}
+$script:WinSuxStep++
+$script:WinSuxStepStart = Get-Date
+$total = ((Get-Date) - $script:WinSuxStart)
+Write-Host ""
+Write-Host ("  [{0,2}/{1}] " -f $script:WinSuxStep, $script:WinSuxTotal) -ForegroundColor DarkCyan -NoNewline
+Write-Host $label -ForegroundColor White -NoNewline
+Write-Host ("   +{0:mm\:ss}" -f $total) -ForegroundColor DarkGray
+$Host.UI.RawUI.WindowTitle = "WinSux - $($script:WinSuxStep)/$($script:WinSuxTotal) - $label"
+}
+
+function Write-Sub([string]$label) {
+Write-Host ("      " + [string][char]0x2022 + " ") -ForegroundColor DarkCyan -NoNewline
+Write-Host $label -ForegroundColor Gray
+}
+
+function Write-Info([string]$label) {
+Write-Host ("        " + $label) -ForegroundColor DarkGray
+}
+
+Write-Banner
 
 
         # FUNCTION RUN AS TRUSTED INSTALLER
@@ -40,7 +83,7 @@
   		}
         }
 		Write-Progress -Id 1 -Activity "Optimisation en cours" -Status "Parametres Windows" -PercentComplete 8
-		Write-Host "Parametres Windows`n"
+		Write-Section "Parametres Windows"
 		## regedit
 		## control
         ## ms-settings:
@@ -49,7 +92,7 @@
 		
 
 Write-Progress -Id 2 -ParentId 1 -Activity "Parametres Windows" -Status "1/11 Confidentialite et permissions des applications" -PercentComplete 9
-Write-Host "  [1/11] Confidentialite et permissions des applications"
+Write-Sub "[1/11] Confidentialite et permissions des applications"
 # fix 1 for turn off privacy & security app permissions
 # stop cam service and remove the database
 Stop-Service -Name 'camsvc' -Force -ErrorAction SilentlyContinue
@@ -61,7 +104,7 @@ cmd /c "reg add `"HKLM\SYSTEM\ControlSet001\Services\CDPUserSvc`" /v `"Start`" /
 
 
 Write-Progress -Id 2 -ParentId 1 -Activity "Parametres Windows" -Status "2/11 Import du registre principal (reg.reg)" -PercentComplete 18
-Write-Host "  [2/11] Import du registre principal (reg.reg)"
+Write-Sub "[2/11] Import du registre principal (reg.reg)"
 # import steptwo reg file
 Start-Process -Wait "regedit.exe" -ArgumentList "/S `"$env:SystemRoot\Temp\reg.reg`"" -WindowStyle Hidden
 
@@ -95,7 +138,7 @@ Run-Trusted -command $capabilityconsentstoragedb
 
 
 Write-Progress -Id 2 -ParentId 1 -Activity "Parametres Windows" -Status "3/11 Memoire et chiffrement" -PercentComplete 27
-Write-Host "  [3/11] Memoire et chiffrement"
+Write-Sub "[3/11] Memoire et chiffrement"
 # memory compression is deliberately LEFT ON.
 # disabling it only pays off with a lot of ram: below 16 GB it pushes the system to the pagefile sooner,
 # which trades a little cpu for disk stalls - the opposite of what this pack is for.
@@ -119,7 +162,7 @@ Disable-BitLocker -MountPoint $_.MountPoint -ErrorAction SilentlyContinue | Out-
 
 
 Write-Progress -Id 2 -ParentId 1 -Activity "Parametres Windows" -Status "4/11 SmartScreen et taches planifiees" -PercentComplete 36
-Write-Host "  [4/11] SmartScreen et taches planifiees"
+Write-Sub "[4/11] SmartScreen et taches planifiees"
 # smartscreen for microsoft edge - needs normal boot as admin
 cmd /c "reg add `"HKEY_CURRENT_USER\SOFTWARE\Microsoft\Edge\SmartScreenEnabled`" /ve /t REG_DWORD /d `"0`" /f >nul 2>&1"
 
@@ -141,7 +184,7 @@ Get-ScheduledTask | Where-Object {$_.TaskName -match 'ScheduledDefrag'} | Disabl
 
 
 Write-Progress -Id 2 -ParentId 1 -Activity "Parametres Windows" -Status "5/11 Reseau - protocoles inutiles" -PercentComplete 45
-Write-Host "  [5/11] Reseau - protocoles inutiles"
+Write-Sub "[5/11] Reseau - protocoles inutiles"
 # disable all network adapters except ipv4
         ## powershell -noexit -command "get-netadapterbinding | select-object name, displayname, componentid, enabled | format-table -autosize"
         ## ncpa.cpl
@@ -152,7 +195,7 @@ Disable-NetAdapterBinding -Name "*" -ComponentID $adapterbinding -ErrorAction Si
 
 
 Write-Progress -Id 2 -ParentId 1 -Activity "Parametres Windows" -Status "6/11 Windows Update" -PercentComplete 54
-Write-Host "  [6/11] Windows Update"
+Write-Sub "[6/11] Windows Update"
 # security and quality updates are deliberately NOT paused any more.
 # only DRIVER updates are blocked below - that is what protects the freshly installed nvidia driver from
 # being overwritten by windows update. pausing everything else for a year on a machine that also runs
@@ -177,7 +220,7 @@ reg add "HKLM\Software\Policies\Microsoft\Windows\WindowsUpdate\AU" /v "EnableFe
 
 
 Write-Progress -Id 2 -ParentId 1 -Activity "Parametres Windows" -Status "7/11 Notifications et session" -PercentComplete 63
-Write-Host "  [7/11] Notifications et session"
+Write-Sub "[7/11] Notifications et session"
 # disable if you've been away, when should windows require you to sign in again?
         ## ms-settings:signinoptions
 powercfg /setdcvalueindex scheme_current sub_none consolelock 0 2>$null
@@ -260,7 +303,7 @@ reg unload "HKLM\Settings" >$null 2>&1
 
 
 Write-Progress -Id 2 -ParentId 1 -Activity "Parametres Windows" -Status "8/11 Economies d energie des peripheriques" -PercentComplete 72
-Write-Host "  [8/11] Economies d energie des peripheriques"
+Write-Sub "[8/11] Economies d energie des peripheriques"
 # disable network adapter powersaving & wake on all connected devices
 $basePath = "HKLM:\System\ControlSet001\Control\Class\{4d36e972-e325-11ce-bfc1-08002be10318}"
 $adapterKeys = Get-ChildItem -Path $basePath -ErrorAction SilentlyContinue
@@ -406,7 +449,7 @@ cmd /c "reg add `"$(($diskPath -replace 'Microsoft.PowerShell.Core\\Registry::',
 
 
 Write-Progress -Id 2 -ParentId 1 -Activity "Parametres Windows" -Status "9/11 Interface - barre des taches et ecran de verrouillage" -PercentComplete 81
-Write-Host "  [9/11] Interface - barre des taches et ecran de verrouillage"
+Write-Sub "[9/11] Interface - barre des taches et ecran de verrouillage"
 # import notepad settings
         ## notepad
 # stop notepad running
@@ -469,7 +512,7 @@ rundll32.exe user32.dll, UpdatePerUserSystemParameters
 
 
 Write-Progress -Id 2 -ParentId 1 -Activity "Parametres Windows" -Status "10/11 Menu contextuel" -PercentComplete 90
-Write-Host "  [10/11] Menu contextuel"
+Write-Sub "[10/11] Menu contextuel"
 # remove context menu items
 # restore the classic context menu
 cmd /c "reg add `"HKCU\Software\Classes\CLSID\{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}\InprocServer32`" /ve /t REG_SZ /d `"`" /f >nul 2>&1"
@@ -510,7 +553,7 @@ cmd /c "reg delete `"HKCR\UserLibraryFolder\shellex\ContextMenuHandlers\SendTo`"
 
 
 Write-Progress -Id 2 -ParentId 1 -Activity "Parametres Windows" -Status "11/11 Menu Demarrer et raccourcis" -PercentComplete 100
-Write-Host "  [11/11] Menu Demarrer et raccourcis"
+Write-Sub "[11/11] Menu Demarrer et raccourcis"
 # windows 10 import start menu
 # delete startmenulayout.xml
 Remove-Item -Recurse -Force "$env:SystemDrive\Windows\StartMenuLayout.xml" -ErrorAction SilentlyContinue | Out-Null
@@ -625,7 +668,7 @@ if ($hasNvidia) {
         Clear-Host
 
         Write-Progress -Id 1 -Activity "Optimisation en cours" -Status "Telechargement du pilote GPU Nvidia" -PercentComplete 16
-        Write-Host "Telechargement du pilote GPU Nvidia`n"
+        Write-Section "Telechargement du pilote GPU Nvidia"
     	## explorer "https://www.nvidia.com/en-us/drivers"
 		## shell:appsFolder\NVIDIACorp.NVIDIAControlPanel_56jybvy8sckqj!NVIDIACorp.NVIDIAControlPanel
 
@@ -750,7 +793,7 @@ Pause
 Clear-Host
 
         Write-Progress -Id 1 -Activity "Optimisation en cours" -Status "Selection du pilote" -PercentComplete 22
-        Write-Host "Selectionnez le pilote telecharge`n"
+        Write-Section "Selectionnez le pilote telecharge"
 
 Start-Sleep -Seconds 5
 Add-Type -AssemblyName System.Windows.Forms
@@ -764,7 +807,7 @@ $InstallFile = $Dialog.FileName
 if ($InstallFile -and (Test-Path $InstallFile)) {
 
         Write-Progress -Id 1 -Activity "Optimisation en cours" -Status "Allegement du pilote" -PercentComplete 28
-        Write-Host "Allegement du pilote`n"
+        Write-Section "Allegement du pilote"
 
 # extract driver with 7zip
 & "$env:SystemDrive\Program Files\7-Zip\7z.exe" x "$InstallFile" -o"$env:SystemRoot\Temp\nvidiadriver" -y | Out-Null
@@ -790,7 +833,7 @@ Remove-Item "$env:SystemRoot\Temp\nvidiadriver\$item" -Recurse -Force -ErrorActi
 Write-Progress -Id 2 -Activity "Allegement du pilote" -Completed
 
         Write-Progress -Id 1 -Activity "Optimisation en cours" -Status "Installation du pilote" -PercentComplete 34
-        Write-Host "Installation du pilote`n"
+        Write-Section "Installation du pilote"
 
 # install nvidia driver
 Start-Process "$env:SystemRoot\Temp\nvidiadriver\setup.exe" -ArgumentList "-s -noreboot -noeula -clean" -Wait -NoNewWindow
@@ -814,7 +857,7 @@ Write-Host "Aucun fichier pilote disponible - installation du pilote ignoree`n"
 }
 
         Write-Progress -Id 1 -Activity "Optimisation en cours" -Status "Importation des parametres" -PercentComplete 44
-        Write-Host "Importation des parametres`n"
+        Write-Section "Importation des parametres"
 
 # turn on disable dynamic pstate
 $subkeys = Get-ChildItem -Path "Registry::HKLM\SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}" -Force -ErrorAction SilentlyContinue
@@ -1081,7 +1124,7 @@ Start-Process -wait "$env:SystemRoot\Temp\inspector.exe" -ArgumentList "-silentI
 # over the same power limit meant whichever ran last won, and any afterburner setting silently reverted
 # within the quarter hour. afterburner does the same job better (curve undervolt, fan curve, memory
 # offset) and applies its profile at startup on its own
-        Write-Host "Installation de MSI Afterburner`n"
+        Write-Section "Installation de MSI Afterburner"
 
 # remove the old scheduled task and its script if a previous run of this pack created them
 Unregister-ScheduledTask -TaskName "GPU Boost" -Confirm:$false -ErrorAction SilentlyContinue
@@ -1098,7 +1141,7 @@ Start-Process "winget" -ArgumentList "install --id Guru3D.Afterburner --exact --
 }
 
 if (Test-Path $afterburnerExe) {
-Write-Host "  MSI Afterburner installe`n"
+Write-Info "MSI Afterburner installe"
 
 # stop it if the installer launched it - its settings file is rewritten on exit and would overwrite
 # anything written here
@@ -1134,7 +1177,7 @@ if ($idx -ge 0) { $abLines = $abLines[0..$idx] + "$key=$value" + $abLines[($idx+
 }
 }
 Set-Content -Path $abConfig -Value $abLines -Force -ErrorAction SilentlyContinue
-Write-Host "  Profil de base ecrit (demarrage avec Windows, controle de tension debloque)`n"
+Write-Info "Profil de base ecrit (demarrage avec Windows, controle de tension debloque)"
 }
 
 # the safe half of the tuning, applied through nvidia-smi where it can be verified rather than guessed:
@@ -1146,18 +1189,18 @@ $maxLine = $powerReport | Select-String "Max Power Limit\s*:\s*([\d.]+)"
 if ($maxLine) {
 $maxLimit = [math]::Floor([double]$maxLine.Matches[0].Groups[1].Value)
 & nvidia-smi -pl $maxLimit 2>$null | Out-Null
-Write-Host "  Limite de puissance portee a $maxLimit W`n"
+Write-Info "Limite de puissance portee a $maxLimit W"
 }
 & nvidia-smi -gtt 83 2>$null | Out-Null
 } catch { }
 
 } else {
-Write-Host "  Installation de MSI Afterburner echouee - etape ignoree`n"
+Write-Info "Installation de MSI Afterburner echouee - etape ignoree"
 }
 }
 
         Write-Progress -Id 1 -Activity "Optimisation en cours" -Status "Optimisations jeux" -PercentComplete 54
-        Write-Host "Optimisations jeux`n"
+        Write-Section "Optimisations jeux"
 
 # disable game dvr & fullscreen optimizations
 cmd /c "reg add `"HKCU\System\GameConfigStore`" /v `"GameDVR_Enabled`" /t REG_DWORD /d `"0`" /f >nul 2>&1"
@@ -1479,7 +1522,7 @@ cmd /c "reg add `"HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\S
 cmd /c "reg add `"HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\StorageSense\Parameters\StoragePolicy`" /v `"01`" /t REG_DWORD /d `"0`" /f >nul 2>&1"
 
         Write-Progress -Id 1 -Activity "Optimisation en cours" -Status "Peripheriques et audio" -PercentComplete 64
-        Write-Host "Peripheriques et audio`n"
+        Write-Section "Peripheriques et audio"
 
 # disable mouse pointer acceleration (raw input, no smoothing)
 cmd /c "reg add `"HKCU\Control Panel\Mouse`" /v `"MouseSpeed`" /t REG_SZ /d `"0`" /f >nul 2>&1"
@@ -1601,7 +1644,7 @@ cmd /c "sc stop `"DiagTrack`" >nul 2>&1"
 cmd /c "sc config `"DiagTrack`" start= disabled >nul 2>&1"
 
         Write-Progress -Id 1 -Activity "Optimisation en cours" -Status "Mode d'alimentation" -PercentComplete 72
-        Write-Host "Mode d'alimentation`n"
+        Write-Section "Mode d'alimentation"
         ## powercfg.cpl
 
 # import ultimate power plan
@@ -1824,7 +1867,7 @@ powercfg /setacvalueindex 99999999-9999-9999-9999-999999999999 de830923-a562-41a
 powercfg /setdcvalueindex 99999999-9999-9999-9999-999999999999 de830923-a562-41af-a086-e3a2c6bad2da e69653ca-cf7f-4f05-aa73-cb833fa90ad4 0x00000000 2>$null
 
         Write-Progress -Id 1 -Activity "Optimisation en cours" -Status "Resolution du minuteur" -PercentComplete 82
-        Write-Host "Resolution du minuteur`n"
+        Write-Section "Resolution du minuteur"
         ## services.msc
 
 # compile the service. the source is copied to C:\Windows\Temp by WinSux.ps1, but that folder is wiped
@@ -1875,8 +1918,219 @@ cmd /c "cd /d %systemroot%\system32 && lodctr /R >nul 2>&1"
 cmd /c "cd /d %systemroot%\sysWOW64 && lodctr /R >nul 2>&1"
 
 
+        Write-Progress -Id 1 -Activity "Optimisation en cours" -Status "Outils d'entretien" -PercentComplete 86
+        Write-Section "Outils d'entretien"
+
+$persistentDir = "$env:ProgramData\Optimisation"
+New-Item -Path $persistentDir -ItemType Directory -Force -ErrorAction SilentlyContinue | Out-Null
+
+# ------------------------------------------------------------------
+# 1. maximum refresh rate on every active display
+# ------------------------------------------------------------------
+# windows very often drops every monitor back to 60 Hz after a driver is reinstalled, which is exactly
+# what this pack does. this walks the real mode list per display and picks the highest refresh rate
+# available at the resolution already in use - it never changes resolution
+$refreshScript = "$persistentDir\refreshrate.ps1"
+$refreshContent = @'
+$ErrorActionPreference = 'SilentlyContinue'
+Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+[StructLayout(LayoutKind.Sequential, CharSet=CharSet.Unicode)]
+public struct DEVMODE {
+  [MarshalAs(UnmanagedType.ByValTStr, SizeConst=32)] public string dmDeviceName;
+  public short dmSpecVersion, dmDriverVersion, dmSize, dmDriverExtra;
+  public int dmFields;
+  public int dmPositionX, dmPositionY, dmDisplayOrientation, dmDisplayFixedOutput;
+  public short dmColor, dmDuplex, dmYResolution, dmTTOption, dmCollate;
+  [MarshalAs(UnmanagedType.ByValTStr, SizeConst=32)] public string dmFormName;
+  public short dmLogPixels;
+  public int dmBitsPerPel, dmPelsWidth, dmPelsHeight, dmDisplayFlags, dmDisplayFrequency;
+  public int dmICMMethod, dmICMIntent, dmMediaType, dmDitherType, dmReserved1, dmReserved2, dmPanningWidth, dmPanningHeight;
+}
+[StructLayout(LayoutKind.Sequential, CharSet=CharSet.Unicode)]
+public struct DISPLAY_DEVICE {
+  public int cb;
+  [MarshalAs(UnmanagedType.ByValTStr, SizeConst=32)] public string DeviceName;
+  [MarshalAs(UnmanagedType.ByValTStr, SizeConst=128)] public string DeviceString;
+  public int StateFlags;
+  [MarshalAs(UnmanagedType.ByValTStr, SizeConst=128)] public string DeviceID;
+  [MarshalAs(UnmanagedType.ByValTStr, SizeConst=128)] public string DeviceKey;
+}
+public class WinSuxDisplay {
+  [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern bool EnumDisplayDevices(string d, uint n, ref DISPLAY_DEVICE dd, uint f);
+  [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern bool EnumDisplaySettings(string d, int m, ref DEVMODE dm);
+  [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int ChangeDisplaySettingsEx(string d, ref DEVMODE dm, IntPtr h, uint f, IntPtr l);
+}
+"@
+$log = @()
+$i = 0
+while ($true) {
+  $dd = New-Object DISPLAY_DEVICE
+  $dd.cb = [Runtime.InteropServices.Marshal]::SizeOf($dd)
+  if (-not [WinSuxDisplay]::EnumDisplayDevices($null, $i, [ref]$dd, 0)) { break }
+  # DISPLAY_DEVICE_ATTACHED_TO_DESKTOP
+  if ($dd.StateFlags -band 1) {
+    $cur = New-Object DEVMODE
+    $cur.dmSize = [short][Runtime.InteropServices.Marshal]::SizeOf($cur)
+    # ENUM_CURRENT_SETTINGS
+    if ([WinSuxDisplay]::EnumDisplaySettings($dd.DeviceName, -1, [ref]$cur)) {
+      $best = $cur.dmDisplayFrequency
+      $m = 0
+      while ($true) {
+        $dm = New-Object DEVMODE
+        $dm.dmSize = [short][Runtime.InteropServices.Marshal]::SizeOf($dm)
+        if (-not [WinSuxDisplay]::EnumDisplaySettings($dd.DeviceName, $m, [ref]$dm)) { break }
+        if ($dm.dmPelsWidth -eq $cur.dmPelsWidth -and $dm.dmPelsHeight -eq $cur.dmPelsHeight -and
+            $dm.dmBitsPerPel -eq $cur.dmBitsPerPel -and $dm.dmDisplayFrequency -gt $best) {
+          $best = $dm.dmDisplayFrequency
+        }
+        $m++
+      }
+      if ($best -gt $cur.dmDisplayFrequency) {
+        $target = $cur
+        $target.dmDisplayFrequency = $best
+        # DM_PELSWIDTH | DM_PELSHEIGHT | DM_DISPLAYFREQUENCY | DM_BITSPERPEL
+        $target.dmFields = 0x80000 -bor 0x100000 -bor 0x400000 -bor 0x40000
+        # CDS_UPDATEREGISTRY | CDS_GLOBAL
+        $r = [WinSuxDisplay]::ChangeDisplaySettingsEx($dd.DeviceName, [ref]$target, [IntPtr]::Zero, 0x01 -bor 0x08, [IntPtr]::Zero)
+        if ($r -eq 0) { $log += "$($dd.DeviceName) : $($cur.dmDisplayFrequency) Hz -> $best Hz" }
+        else { $log += "$($dd.DeviceName) : echec du passage a $best Hz (code $r)" }
+      } else {
+        $log += "$($dd.DeviceName) : deja au maximum ($best Hz)"
+      }
+    }
+  }
+  $i++
+}
+$log | Set-Content -Path "$env:ProgramData\Optimisation\ecrans.txt" -Force
+$log | ForEach-Object { Write-Host $_ }
+'@
+Set-Content -Path $refreshScript -Value $refreshContent -Force
+
+# run it now, and again at every logon - a monitor turned off at boot is simply missed otherwise
+powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File $refreshScript
+$refreshAction = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$refreshScript`""
+$refreshTrigger = New-ScheduledTaskTrigger -AtLogOn
+Register-ScheduledTask -TaskName "Taux de rafraichissement maximum" -Action $refreshAction -Trigger $refreshTrigger -Force -ErrorAction SilentlyContinue | Out-Null
+
+# ------------------------------------------------------------------
+# 2. maintenance script - conservative, and it reports instead of guessing
+# ------------------------------------------------------------------
+# runs at logon but does the cleanup at most once a day, so logging in five times does not mean five
+# passes over the disk. it only deletes files that are genuinely temporary AND older than 7 days
+$maintScript = "$persistentDir\entretien.ps1"
+$maintContent = @'
+param([switch]$Force)
+$ErrorActionPreference = 'SilentlyContinue'
+$dir = "$env:ProgramData\Optimisation"
+$stamp = "$dir\dernier-entretien.txt"
+$log = @()
+
+if (-not $Force -and (Test-Path $stamp)) {
+  $last = Get-Content $stamp -Raw
+  if ($last -and ([datetime]::TryParse($last.Trim(), [ref]([datetime]::MinValue)))) {
+    if (((Get-Date) - [datetime]::Parse($last.Trim())).TotalHours -lt 20) { exit }
+  }
+}
+
+function Get-FolderMB($path) {
+  if (-not (Test-Path $path)) { return 0 }
+  [math]::Round((Get-ChildItem $path -Recurse -Force -ErrorAction SilentlyContinue |
+    Measure-Object Length -Sum).Sum / 1MB, 1)
+}
+
+$cutoff = (Get-Date).AddDays(-7)
+$freed = 0
+foreach ($target in @("$env:TEMP", "$env:SystemRoot\Temp")) {
+  $before = Get-FolderMB $target
+  Get-ChildItem $target -Recurse -Force -ErrorAction SilentlyContinue |
+    Where-Object { -not $_.PSIsContainer -and $_.LastWriteTime -lt $cutoff } |
+    Remove-Item -Force -ErrorAction SilentlyContinue
+  $after = Get-FolderMB $target
+  $freed += [math]::Max(0, $before - $after)
+}
+$log += "Fichiers temporaires de plus de 7 jours : $([math]::Round($freed,1)) Mo liberes"
+
+# dns cache - cheap, and a stale entry is a real source of "the game server does not respond"
+ipconfig /flushdns | Out-Null
+$log += "Cache DNS vide"
+
+# health checks: report what drifted rather than silently re-applying it
+$plan = (powercfg /getactivescheme)
+if ($plan -notmatch '99999999-9999-9999-9999-999999999999') {
+  powercfg /setactive 99999999-9999-9999-9999-999999999999
+  $log += "Plan d'alimentation revenu au defaut -> reactive"
+} else { $log += "Plan d'alimentation : correct" }
+
+$timer = Get-Service "Set Timer Resolution Service" -ErrorAction SilentlyContinue
+if ($timer -and $timer.Status -ne 'Running') { Start-Service $timer.Name; $log += "Service resolution du minuteur relance" }
+elseif ($timer) { $log += "Service resolution du minuteur : actif" }
+else { $log += "Service resolution du minuteur : ABSENT" }
+
+$free = [math]::Round((Get-PSDrive C).Free / 1GB, 1)
+$log += "Espace libre sur C: : $free Go"
+if ($free -lt 20) { $log += "ATTENTION : moins de 20 Go libres" }
+
+(Get-Date).ToString('yyyy-MM-dd HH:mm:ss') | Set-Content $stamp -Force
+$header = "Entretien du " + (Get-Date).ToString('dd/MM/yyyy HH:mm')
+($header, ('-' * $header.Length)) + $log | Set-Content "$dir\entretien.txt" -Force
+if ($Force) {
+  Write-Host ""
+  Write-Host "  $header" -ForegroundColor Cyan
+  Write-Host ""
+  $log | ForEach-Object { Write-Host "   $_" }
+  Write-Host ""
+  Write-Host "  Termine. Appuyez sur une touche pour fermer." -ForegroundColor DarkGray
+  $null = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')
+}
+'@
+Set-Content -Path $maintScript -Value $maintContent -Force
+
+$maintAction = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$maintScript`""
+$maintTrigger = New-ScheduledTaskTrigger -AtLogOn
+$maintSettings = New-ScheduledTaskSettingsSet -StartWhenAvailable -DontStopOnIdleEnd
+Register-ScheduledTask -TaskName "Entretien automatique" -Action $maintAction -Trigger $maintTrigger -Settings $maintSettings -Force -ErrorAction SilentlyContinue | Out-Null
+
+# ------------------------------------------------------------------
+# 3. maintenance folder on the desktop
+# ------------------------------------------------------------------
+$toolsDir = "$env:USERPROFILE\Desktop\Entretien PC"
+New-Item -Path $toolsDir -ItemType Directory -Force -ErrorAction SilentlyContinue | Out-Null
+$shell = New-Object -ComObject WScript.Shell
+
+function New-Tool([string]$name, [string]$target, [string]$arguments, [string]$icon) {
+$lnk = $shell.CreateShortcut("$toolsDir\$name.lnk")
+$lnk.TargetPath = $target
+if ($arguments) { $lnk.Arguments = $arguments }
+if ($icon) { $lnk.IconLocation = $icon }
+$lnk.Save()
+}
+
+New-Tool "1 - Entretien maintenant"  "powershell.exe" "-NoProfile -ExecutionPolicy Bypass -File `"$maintScript`" -Force" "$env:SystemRoot\System32\cleanmgr.exe,0"
+New-Tool "2 - Rafraichissement max"  "powershell.exe" "-NoProfile -ExecutionPolicy Bypass -NoExit -File `"$refreshScript`"" "$env:SystemRoot\System32\DisplaySwitch.exe,0"
+New-Tool "3 - Rapport WinSux"        "notepad.exe" "`"$persistentDir\rapport.txt`"" "$env:SystemRoot\System32\notepad.exe,0"
+New-Tool "Nettoyage de disque"       "$env:SystemRoot\System32\cleanmgr.exe" "" ""
+New-Tool "Gestionnaire de taches"    "$env:SystemRoot\System32\Taskmgr.exe" "" ""
+New-Tool "Moniteur de ressources"    "$env:SystemRoot\System32\resmon.exe" "" ""
+New-Tool "Gestionnaire de peripheriques" "$env:SystemRoot\System32\mmc.exe" "devmgmt.msc" "$env:SystemRoot\System32\devmgr.dll,0"
+New-Tool "Services"                  "$env:SystemRoot\System32\mmc.exe" "services.msc" "$env:SystemRoot\System32\filemgmt.dll,0"
+New-Tool "Observateur d evenements"  "$env:SystemRoot\System32\mmc.exe" "eventvwr.msc" ""
+New-Tool "Informations systeme"      "$env:SystemRoot\System32\msinfo32.exe" "" ""
+New-Tool "Options d alimentation"    "$env:SystemRoot\System32\control.exe" "powercfg.cpl" ""
+New-Tool "Programmes installes"      "$env:SystemRoot\System32\control.exe" "appwiz.cpl" ""
+New-Tool "Parametres d affichage"    "$env:SystemRoot\explorer.exe" "ms-settings:display" ""
+if (Test-Path "${env:ProgramFiles(x86)}\MSI Afterburner\MSIAfterburner.exe") {
+New-Tool "MSI Afterburner" "${env:ProgramFiles(x86)}\MSI Afterburner\MSIAfterburner.exe" "" ""
+}
+if (Test-Path "$env:ProgramFiles\NVIDIA Corporation\Control Panel Client\nvcplui.exe") {
+New-Tool "Panneau NVIDIA" "$env:ProgramFiles\NVIDIA Corporation\Control Panel Client\nvcplui.exe" "" ""
+}
+
+Write-Info "Dossier cree : $toolsDir"
+
 		Write-Progress -Id 1 -Activity "Optimisation en cours" -Status "Nettoyage de disque" -PercentComplete 90
-		Write-Host "Nettoyage de disque`n"
+		Write-Section "Nettoyage de disque"
 		## cleanmgr.exe
 		## %temp%
 		## temp
@@ -1919,7 +2173,7 @@ Remove-Item "$env:SystemDrive\Windows.old" -Recurse -Force -ErrorAction Silently
 Remove-Item "$env:SystemDrive\DumpStack.log" -Force -ErrorAction SilentlyContinue | Out-Null
 
         Write-Progress -Id 1 -Activity "Optimisation en cours" -Status "Point de restauration" -PercentComplete 98
-        Write-Host "Point de restauration`n"
+        Write-Section "Point de restauration"
         ## c:\windows\system32\control.exe sysdm.cpl ,4
         ## rstrui
 
@@ -1980,6 +2234,10 @@ Add-Check "Etat processeur maximum = 100%" { (Get-PowerAC '54533251-82be-4824-96
 Add-Check "Veille processeur (C-states) active" { (Get-PowerAC '54533251-82be-4824-96c1-47b60b740d00' '5d76a2ca-e8c0-402f-a133-2158492d58ad' 0) -eq 0 }
 Add-Check "Core parking desactive" { (Get-PowerAC '54533251-82be-4824-96c1-47b60b740d00' '0cc5b647-c1df-4637-891a-dec35c318583' 100) -eq 100 }
 Add-Check "MSI Afterburner installe" { Test-Path "${env:ProgramFiles(x86)}\MSI Afterburner\MSIAfterburner.exe" }
+Add-Check "Dossier Entretien PC sur le bureau" { Test-Path "$env:USERPROFILE\Desktop\Entretien PC" }
+Add-Check "Tache taux de rafraichissement" { (Get-ScheduledTask -TaskName 'Taux de rafraichissement maximum' -ErrorAction SilentlyContinue) -ne $null }
+Add-Check "Tache entretien automatique" { (Get-ScheduledTask -TaskName 'Entretien automatique' -ErrorAction SilentlyContinue) -ne $null }
+Add-Check "Ecrans au taux maximum" { $r = Get-Content "$env:ProgramData\Optimisation\ecrans.txt" -ErrorAction SilentlyContinue; $r -and -not ($r -match 'echec') }
 Add-Check "Aucune tache concurrente sur la limite GPU" { (Get-ScheduledTask -TaskName 'GPU Boost' -ErrorAction SilentlyContinue) -eq $null }
 Add-Check "Tache Foreground App Boost active" { (Get-ScheduledTask -TaskName 'Foreground App Boost' -ErrorAction SilentlyContinue) -ne $null }
 Add-Check "SysMain / DiagTrack desactives" { ((Get-Service SysMain -ErrorAction SilentlyContinue).StartType -eq 'Disabled') -and ((Get-Service DiagTrack -ErrorAction SilentlyContinue).StartType -eq 'Disabled') }
@@ -1988,9 +2246,14 @@ Add-Check "Reseau: Nagle desactive" { (Get-ChildItem 'HKLM:\SYSTEM\CurrentContro
 $passed = @($checks | Where-Object { $_.Ok }).Count
 $total = $checks.Count
 
-Write-Host "========================================"
-Write-Host "   RAPPORT DE VERIFICATION  $passed/$total"
-Write-Host "========================================`n"
+$runTime = (Get-Date) - $script:WinSuxStart
+Write-Banner
+Write-Host ("  RAPPORT DE VERIFICATION   ") -ForegroundColor White -NoNewline
+if ($passed -eq $total) { Write-Host "$passed/$total" -ForegroundColor Green -NoNewline }
+elseif ($passed -ge ($total * 0.8)) { Write-Host "$passed/$total" -ForegroundColor Yellow -NoNewline }
+else { Write-Host "$passed/$total" -ForegroundColor Red -NoNewline }
+Write-Host ("   duree totale {0:mm\:ss}" -f $runTime) -ForegroundColor DarkGray
+Write-Host ""
 foreach ($c in $checks) {
 if ($c.Ok) {
 Write-Host ("  [ OK   ] " + $c.Label) -ForegroundColor Green
@@ -2016,7 +2279,7 @@ $log += "resultat : $passed/$total"
 $log += ""
 foreach ($c in $checks) { $log += ("{0,-8} {1}" -f $(if ($c.Ok) { "[OK]" } else { "[ECHEC]" }), $c.Label) }
 $log | Set-Content -Path $logFile -Force -Encoding UTF8
-Write-Host "  Journal : $logFile`n"
+Write-Info "Journal : $logFile"
 
         Write-Host "Redemarrage dans 20 secondes`n"
 
