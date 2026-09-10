@@ -909,6 +909,9 @@ $Dialog.ShowDialog() | Out-Null
 $InstallFile = $Dialog.FileName
 }
 
+# only extract/install if we actually have a driver file - the manual dialog can be cancelled, leaving $InstallFile empty
+if ($InstallFile -and (Test-Path $InstallFile)) {
+
         Write-Progress -Id 1 -Activity "Optimisation en cours" -Status "Allegement du pilote" -PercentComplete 50
         Write-Host "Allegement du pilote`n"
 
@@ -949,6 +952,10 @@ Remove-Item "$InstallFile" -Force -ErrorAction SilentlyContinue | Out-Null
 
 # delete old driver files
 Remove-Item "$env:SystemDrive\NVIDIA" -Recurse -Force -ErrorAction SilentlyContinue | Out-Null
+
+} else {
+Write-Host "Aucun fichier pilote disponible - installation du pilote ignoree`n"
+}
 
         Write-Progress -Id 1 -Activity "Optimisation en cours" -Status "Importation des parametres" -PercentComplete 63
         Write-Host "Importation des parametres`n"
@@ -1202,7 +1209,11 @@ Start-Process -wait "$env:SystemRoot\Temp\inspector.exe" -ArgumentList "-silentI
 # apply a light power limit boost adapted to the gpu (raises to the manufacturer's own default, never the extreme max, no clock/voltage overclock)
 # smart: only boosts on ac power (or desktops with no battery), re-checks periodically instead of a one-shot fixed value
 try {
-$gpuBoostScript = "$env:SystemRoot\Temp\gpuboost.ps1"
+# permanent folder, NOT C:\Windows\Temp - the disk cleanup step at the end of this script wipes that folder,
+# which would delete the script the scheduled task depends on and silently kill the boost after reboot
+$persistentDir = "$env:ProgramData\Optimisation"
+New-Item -Path $persistentDir -ItemType Directory -Force -ErrorAction SilentlyContinue | Out-Null
+$gpuBoostScript = "$persistentDir\gpuboost.ps1"
 $gpuBoostScriptContent = @'
 Add-Type -AssemblyName System.Windows.Forms
 $hasBattery = Get-CimInstance -ClassName Win32_Battery -ErrorAction SilentlyContinue
@@ -1335,7 +1346,10 @@ cmd /c "reg add `"HKLM\SYSTEM\CurrentControlSet\Control\PriorityControl`" /v `"W
 
 # persistent foreground app process priority booster - whatever app has focus (the game) gets bumped to High
 try {
-$boosterScript = "$env:SystemRoot\Temp\foregroundboost.ps1"
+# permanent folder, NOT C:\Windows\Temp - see the same note on the gpu boost script above
+$persistentDir = "$env:ProgramData\Optimisation"
+New-Item -Path $persistentDir -ItemType Directory -Force -ErrorAction SilentlyContinue | Out-Null
+$boosterScript = "$persistentDir\foregroundboost.ps1"
 $boosterScriptContent = @'
 Add-Type @"
 using System;
