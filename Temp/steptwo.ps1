@@ -1275,26 +1275,39 @@ Set-Content -Path "$env:SystemRoot\Temp\inspector.nip" -Value $nipfile -Force
 Start-Process -wait "$env:SystemRoot\Temp\inspector.exe" -ArgumentList "-silentImport -silent $env:SystemRoot\Temp\inspector.nip"
 
 # apply a light power limit boost adapted to the gpu (raises to the manufacturer's own default, never the extreme max, no clock/voltage overclock)
+# smart: only boosts on ac power (or desktops with no battery), re-checks periodically instead of a one-shot fixed value
 try {
+$gpuBoostScript = "$env:SystemRoot\Temp\gpuboost.ps1"
+$gpuBoostScriptContent = @'
+Add-Type -AssemblyName System.Windows.Forms
+$hasBattery = Get-CimInstance -ClassName Win32_Battery -ErrorAction SilentlyContinue
+$onAC = (-not $hasBattery) -or ([System.Windows.Forms.SystemInformation]::PowerStatus.PowerLineStatus -eq 'Online')
 $powerReport = & nvidia-smi -q -d POWER 2>$null
 $currentLine = $powerReport | Select-String "Current Power Limit\s*:\s*([\d.]+)"
 $defaultLine = $powerReport | Select-String "Default Power Limit\s*:\s*([\d.]+)"
 if ($currentLine -and $defaultLine) {
 $currentLimit = [double]$currentLine.Matches[0].Groups[1].Value
 $defaultLimit = [double]$defaultLine.Matches[0].Groups[1].Value
-if ($currentLimit -lt $defaultLimit) {
-$targetLimit = [math]::Floor($defaultLimit)
-& nvidia-smi -pl $targetLimit 2>$null | Out-Null
+if ($onAC -and $currentLimit -lt $defaultLimit) {
+& nvidia-smi -pl ([math]::Floor($defaultLimit)) 2>$null | Out-Null
+} elseif (-not $onAC -and $currentLimit -gt $defaultLimit) {
+& nvidia-smi -pl ([math]::Floor($defaultLimit)) 2>$null | Out-Null
+}
+}
+'@
+Set-Content -Path $gpuBoostScript -Value $gpuBoostScriptContent -Force
 
-# persist the boost at each logon since nvidia-smi power limits reset
-$gpuBoostScript = "$env:SystemRoot\Temp\gpuboost.cmd"
-Set-Content -Path $gpuBoostScript -Value "nvidia-smi -pl $targetLimit" -Force
-$gpuBoostAction = New-ScheduledTaskAction -Execute $gpuBoostScript
-$gpuBoostTrigger = New-ScheduledTaskTrigger -AtLogOn
+# run once now, then keep re-checking (at logon, at startup, and every 15 min while logged in) so it reacts to plugging/unplugging
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File $gpuBoostScript
+
+$gpuBoostAction = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$gpuBoostScript`""
+$gpuBoostTriggers = @(
+(New-ScheduledTaskTrigger -AtLogOn),
+(New-ScheduledTaskTrigger -AtStartup),
+(New-ScheduledTaskTrigger -Once -At (Get-Date) -RepetitionInterval (New-TimeSpan -Minutes 15) -RepetitionDuration (New-TimeSpan -Days 3650))
+)
 $gpuBoostPrincipal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -RunLevel Highest
-Register-ScheduledTask -TaskName "GPU Boost" -Action $gpuBoostAction -Trigger $gpuBoostTrigger -Principal $gpuBoostPrincipal -Force -ErrorAction SilentlyContinue | Out-Null
-}
-}
+Register-ScheduledTask -TaskName "GPU Boost" -Action $gpuBoostAction -Trigger $gpuBoostTriggers -Principal $gpuBoostPrincipal -Force -ErrorAction SilentlyContinue | Out-Null
 } catch { }
 
         break MainLoop
