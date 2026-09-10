@@ -50,7 +50,7 @@
 $appsToRemove = @(
 'Clipchamp.Clipchamp','Microsoft.3DBuilder','Microsoft.549981C3F5F10','Microsoft.BingFinance','Microsoft.BingFoodAndDrink',
 'Microsoft.BingHealthAndFitness','Microsoft.BingNews','Microsoft.BingSearch','Microsoft.BingSports','Microsoft.BingTranslator',
-'Microsoft.BingTravel','Microsoft.BingWeather','Microsoft.Copilot','Microsoft.Windows.Copilot','Microsoft.Edge.GameAssist',
+'Microsoft.BingTravel','Microsoft.BingWeather','Microsoft.Copilot','Microsoft.Windows.Copilot',
 'Microsoft.MicrosoftOfficeHub','Microsoft.Office.OneNote','Microsoft.Office.Sway','Microsoft.MicrosoftSolitaireCollection',
 'Microsoft.MicrosoftStickyNotes','Microsoft.MixedReality.Portal','Microsoft.NetworkSpeedTest','Microsoft.News',
 'Microsoft.Getstarted','Microsoft.GetHelp','Microsoft.MicrosoftJournal','Microsoft.Messaging','Microsoft.OneConnect',
@@ -133,98 +133,6 @@ Write-Progress -Id 2 -Activity "Suppression des fonctionnalites heritees" -Compl
 		Write-Progress -Id 1 -Activity "Optimisation en cours" -Status "Suppression des applications heritees" -PercentComplete 25
 		Write-Host "Suppression des applications heritees`n"
 		## appwiz.cpl
-
-# ------------------------------------------------------------------
-# uninstall microsoft edge completely (browser + webview2 + updater)
-# ------------------------------------------------------------------
-        Write-Host "Suppression de Microsoft Edge`n"
-
-# the edge uninstaller refuses to run unless the machine is flagged as being in a region where uninstall is
-# allowed (eea). point the region policy at an empty ruleset so setup.exe --uninstall is accepted everywhere
-$regionPolicy = "$env:SystemRoot\System32\IntegratedServicesRegionPolicySet.json"
-if (Test-Path $regionPolicy) {
-cmd /c "takeown /f `"$regionPolicy`" >nul 2>&1"
-cmd /c "icacls `"$regionPolicy`" /grant *S-1-5-32-544:F >nul 2>&1"
-Copy-Item $regionPolicy "$regionPolicy.bak" -Force -ErrorAction SilentlyContinue
-Set-Content -Path $regionPolicy -Value '{"policies":[]}' -Force -ErrorAction SilentlyContinue
-}
-cmd /c "reg add `"HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies`" /v `"NoRemove`" /t REG_DWORD /d `"0`" /f >nul 2>&1"
-
-# stop everything edge-related still running
-'msedge','msedgewebview2','MicrosoftEdgeUpdate','identity_helper','elevation_service' | ForEach-Object {
-Stop-Process -Name $_ -Force -ErrorAction SilentlyContinue
-}
-
-# uninstall via each edge/webview2/updater setup.exe found on disk (system-level and user-level installs)
-$edgeRoots = @(
-"$env:ProgramFiles\Microsoft\Edge\Application",
-"${env:ProgramFiles(x86)}\Microsoft\Edge\Application",
-"$env:ProgramFiles\Microsoft\EdgeCore",
-"${env:ProgramFiles(x86)}\Microsoft\EdgeCore",
-"$env:ProgramFiles\Microsoft\EdgeWebView\Application",
-"${env:ProgramFiles(x86)}\Microsoft\EdgeWebView\Application"
-)
-foreach ($root in $edgeRoots) {
-if (-not (Test-Path $root)) { continue }
-Get-ChildItem -Path $root -Filter "setup.exe" -Recurse -ErrorAction SilentlyContinue | ForEach-Object {
-foreach ($target in @("--uninstall --msedge --system-level --verbose-logging --force-uninstall",
-"--uninstall --msedge --user-level --verbose-logging --force-uninstall",
-"--uninstall --msedgewebview --system-level --verbose-logging --force-uninstall")) {
-Start-Process -FilePath $_.FullName -ArgumentList $target -Wait -WindowStyle Hidden -ErrorAction SilentlyContinue
-}
-}
-}
-
-# the edge updater has its own uninstaller
-Get-ChildItem -Path "${env:ProgramFiles(x86)}\Microsoft\EdgeUpdate","$env:ProgramFiles\Microsoft\EdgeUpdate" -Filter "MicrosoftEdgeUpdate.exe" -Recurse -ErrorAction SilentlyContinue |
-ForEach-Object { Start-Process -FilePath $_.FullName -ArgumentList "/uninstall" -Wait -WindowStyle Hidden -ErrorAction SilentlyContinue }
-
-# appx copy of edge (win11 ships one) + the edge game assist package
-Get-AppxPackage -AllUsers "*MicrosoftEdge*" -ErrorAction SilentlyContinue | Remove-AppxPackage -AllUsers -ErrorAction SilentlyContinue
-Get-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName -like "*MicrosoftEdge*" } |
-ForEach-Object { Remove-AppxProvisionedPackage -Online -PackageName $_.PackageName -ErrorAction SilentlyContinue | Out-Null }
-
-# edge services & scheduled tasks
-'edgeupdate','edgeupdatem','MicrosoftEdgeElevationService' | ForEach-Object {
-cmd /c "sc stop `"$_`" >nul 2>&1"
-cmd /c "sc delete `"$_`" >nul 2>&1"
-}
-Get-ScheduledTask -ErrorAction SilentlyContinue | Where-Object { $_.TaskName -like "*MicrosoftEdge*" } |
-Unregister-ScheduledTask -Confirm:$false -ErrorAction SilentlyContinue
-
-# leftover folders, shortcuts and registry
-$edgeLeftovers = @(
-"$env:ProgramFiles\Microsoft\Edge","${env:ProgramFiles(x86)}\Microsoft\Edge",
-"$env:ProgramFiles\Microsoft\EdgeCore","${env:ProgramFiles(x86)}\Microsoft\EdgeCore",
-"$env:ProgramFiles\Microsoft\EdgeUpdate","${env:ProgramFiles(x86)}\Microsoft\EdgeUpdate",
-"$env:ProgramFiles\Microsoft\EdgeWebView","${env:ProgramFiles(x86)}\Microsoft\EdgeWebView",
-"$env:LOCALAPPDATA\Microsoft\Edge","$env:LOCALAPPDATA\Microsoft\EdgeUpdate",
-"$env:ProgramData\Microsoft\Windows\Start Menu\Programs\Microsoft Edge.lnk",
-"$env:PUBLIC\Desktop\Microsoft Edge.lnk","$env:USERPROFILE\Desktop\Microsoft Edge.lnk"
-)
-foreach ($leftover in $edgeLeftovers) {
-cmd /c "takeown /f `"$leftover`" /r /d y >nul 2>&1"
-cmd /c "icacls `"$leftover`" /grant *S-1-5-32-544:F /t >nul 2>&1"
-Remove-Item $leftover -Recurse -Force -ErrorAction SilentlyContinue | Out-Null
-}
-cmd /c "reg delete `"HKLM\SOFTWARE\Microsoft\Edge`" /f >nul 2>&1"
-cmd /c "reg delete `"HKLM\SOFTWARE\WOW6432Node\Microsoft\Edge`" /f >nul 2>&1"
-cmd /c "reg delete `"HKCU\SOFTWARE\Microsoft\Edge`" /f >nul 2>&1"
-cmd /c "reg delete `"HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Microsoft Edge`" /f >nul 2>&1"
-cmd /c "reg delete `"HKLM\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\Microsoft Edge`" /f >nul 2>&1"
-cmd /c "reg delete `"HKLM\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\Microsoft Edge Update`" /f >nul 2>&1"
-
-# block any reinstall coming back through windows update / the edge updater
-cmd /c "reg add `"HKLM\SOFTWARE\Microsoft\EdgeUpdate`" /v `"DoNotUpdateToEdgeWithChromium`" /t REG_DWORD /d `"1`" /f >nul 2>&1"
-cmd /c "reg add `"HKLM\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate`" /v `"DoNotUpdateToEdgeWithChromium`" /t REG_DWORD /d `"1`" /f >nul 2>&1"
-cmd /c "reg add `"HKLM\SOFTWARE\Policies\Microsoft\EdgeUpdate`" /v `"InstallDefault`" /t REG_DWORD /d `"0`" /f >nul 2>&1"
-cmd /c "reg add `"HKLM\SOFTWARE\Policies\Microsoft\EdgeUpdate`" /v `"Install{56EB18F8-B008-4CBD-B6D2-8C97FE7E9062}`" /t REG_DWORD /d `"0`" /f >nul 2>&1"
-cmd /c "reg add `"HKLM\SOFTWARE\Policies\Microsoft\EdgeUpdate`" /v `"Install{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}`" /t REG_DWORD /d `"0`" /f >nul 2>&1"
-cmd /c "reg add `"HKLM\SOFTWARE\Policies\Microsoft\EdgeUpdate`" /v `"Install{2CD8A007-E189-409D-A2C8-9AF4EF3C72AA}`" /t REG_DWORD /d `"0`" /f >nul 2>&1"
-cmd /c "reg add `"HKLM\SOFTWARE\Policies\Microsoft\EdgeUpdate`" /v `"UpdateDefault`" /t REG_DWORD /d `"0`" /f >nul 2>&1"
-cmd /c "reg add `"HKLM\SOFTWARE\Policies\Microsoft\MicrosoftEdge\Main`" /v `"AllowPrelaunch`" /t REG_DWORD /d `"0`" /f >nul 2>&1"
-cmd /c "reg add `"HKLM\SOFTWARE\Policies\Microsoft\Edge`" /v `"StartupBoostEnabled`" /t REG_DWORD /d `"0`" /f >nul 2>&1"
-cmd /c "reg add `"HKLM\SOFTWARE\Policies\Microsoft\Edge`" /v `"BackgroundModeEnabled`" /t REG_DWORD /d `"0`" /f >nul 2>&1"
 
 # uninstall brlapi
 cmd /c "sc stop `"brlapi`" >nul 2>&1"
@@ -2174,7 +2082,6 @@ $script:checks += [PSCustomObject]@{ Label = $label; Ok = $ok; Detail = $detail 
 Add-Check "Pilote GPU NVIDIA installe" { (Get-CimInstance Win32_VideoController | Where-Object { $_.Name -like '*NVIDIA*' -and $_.DriverVersion }) -ne $null }
 Add-Check "Panneau de configuration NVIDIA" { (Get-AppxPackage -AllUsers '*NVIDIAControlPanel*') -or (Test-Path "$env:ProgramFiles\NVIDIA Corporation\Control Panel Client") }
 Add-Check "Service resolution du minuteur demarre" { (Get-Service -Name 'Set Timer Resolution Service' -ErrorAction SilentlyContinue).Status -eq 'Running' }
-Add-Check "Microsoft Edge supprime" { -not (Test-Path "${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe") -and -not (Test-Path "$env:ProgramFiles\Microsoft\Edge\Application\msedge.exe") }
 Add-Check "Plan Ultimate Performance actif" { (powercfg /getactivescheme) -match '99999999-9999-9999-9999-999999999999' }
 Add-Check "HAGS (planification GPU materielle)" { (Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\GraphicsDrivers' -Name HwSchMode -ErrorAction SilentlyContinue).HwSchMode -eq 2 }
 Add-Check "MPO desactive (anti-scintillement)" { (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\Dwm' -Name OverlayTestMode -ErrorAction SilentlyContinue).OverlayTestMode -eq 5 }

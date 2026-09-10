@@ -1,7 +1,7 @@
 # WinSux — Guide d'utilisation
 Par ELIAS
 
-Script d'optimisation Windows tout-en-un : installe les outils de base, débloate le système, supprime Microsoft Edge, réinstalle **automatiquement** le pilote NVIDIA proprement, applique des tweaks de performance CPU/GPU/réseau, et nettoie Windows.
+Script d'optimisation Windows tout-en-un : installe les outils de base, débloate le système, réinstalle **automatiquement** le pilote NVIDIA proprement, applique des tweaks de performance CPU/GPU/réseau, et nettoie Windows.
 
 ## Prérequis
 - Windows 10/11 (Home/Pro/LTSC/IoT/Server)
@@ -58,7 +58,6 @@ Le script :
 ### 4. Phase 3 — boot normal, **entièrement automatique**
 `steptwo.ps1` se lance automatiquement :
 - débloat ciblé des applications UWP, capacités et fonctionnalités Windows
-- **suppression complète de Microsoft Edge** (navigateur + WebView2 + updater + services + tâches planifiées + blocage de la réinstallation)
 - **téléchargement et installation automatiques du pilote NVIDIA** : identification du modèle, appel à l'API NVIDIA, téléchargement avec barre de progression, allègement du paquet, installation silencieuse
   - *aucune action requise* — une sélection manuelle n'est proposée qu'en dernier recours si les serveurs NVIDIA sont injoignables
 - profil NVIDIA Profile Inspector (low latency ultra, power management max perf, G-Sync activé)
@@ -67,7 +66,7 @@ Le script :
 - **passe de réparation** : si une ancienne version du pack a déjà tourné sur la machine, le script réactive `MediaPlayback`, l'impression, `Language.Basic`, la base DirectX, réenregistre les paquets UWP cassés et nettoie le DPI forcé à 100 %
 - plan d'alimentation Ultimate Performance, résolution du minuteur système
 - nettoyage disque + point de restauration
-- **rapport de vérification** : 24 contrôles relus depuis l'état réel du système, affichés OK/ÉCHEC et enregistrés dans `C:\ProgramData\Optimisation\rapport.txt`
+- **rapport de vérification** : 23 contrôles relus depuis l'état réel du système, affichés OK/ÉCHEC et enregistrés dans `C:\ProgramData\Optimisation\rapport.txt`
 - **redémarrage final automatique** (20 s, le temps de lire le rapport)
 
 ## Politique thermique
@@ -93,6 +92,7 @@ Après le dernier redémarrage, le PC est prêt.
 Pour éviter de casser l'affichage et les applications :
 - les **frameworks UWP** (VCLibs, .NET.Native, UI.Xaml, WindowsAppRuntime) — sans eux, plus aucune app UWP ne démarre
 - le **Microsoft Store**, **winget**, le **Panneau de configuration NVIDIA**
+- **Microsoft Edge** — le pack n'y touche pas
 - **MediaPlayback** et l'impression — leur suppression coupait toute lecture vidéo et toute impression
 - **Language.Basic** (clavier + locale de la langue d'affichage)
 - **NvContainer / NvCpl / HDAudio / PhysX** dans le pilote NVIDIA (audio HDMI/DP, panneau de configuration, vieux jeux PhysX)
@@ -101,6 +101,5 @@ Pour éviter de casser l'affichage et les applications :
 ## ⚠️ Avertissements importants
 - **Sécurité désactivée** : Windows Defender (temps réel, cloud, tamper protection), UAC, BitLocker, SmartScreen, VBS/memory integrity sont désactivés. Le PC n'a plus de protection antivirus active. À réserver à une machine dédiée au gaming.
 - **Mitigations CPU désactivées** : les protections Spectre / Meltdown / MDS sont coupées (`FeatureSettingsOverride=3`) pour récupérer quelques % de CPU. Pour revenir en arrière : supprimer `FeatureSettingsOverride` et `FeatureSettingsOverrideMask` dans `HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management`, puis redémarrer.
-- **Edge est supprimé définitivement**, WebView2 compris. Quelques applications tierces qui dépendent de WebView2 (certains installeurs, Teams, apps Electron déguisées) peuvent alors refuser de démarrer. Installe un autre navigateur **avant** de lancer le script.
 - **Irréversible en grande partie**. Le point de restauration créé à la fin ne couvre pas les changements déjà appliqués avant sa création.
 - **Ne pas interrompre** les phases automatiques.
