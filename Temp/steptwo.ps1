@@ -1379,6 +1379,13 @@ $instanceID = $gpu.InstanceId
 cmd /c "reg add `"HKLM\SYSTEM\ControlSet001\Enum\$instanceID\Device Parameters\Interrupt Management\MessageSignaledInterruptProperties`" /v `"MSISupported`" /t REG_DWORD /d `"1`" /f >nul 2>&1"
 }
 
+# enable msi mode for network adapters too - fewer interrupt-handling delays (dpc latency)
+$netDevices = Get-PnpDevice -Class Net -ErrorAction SilentlyContinue
+foreach ($net in $netDevices) {
+$instanceID = $net.InstanceId
+cmd /c "reg add `"HKLM\SYSTEM\ControlSet001\Enum\$instanceID\Device Parameters\Interrupt Management\MessageSignaledInterruptProperties`" /v `"MSISupported`" /t REG_DWORD /d `"1`" /f >nul 2>&1"
+}
+
 # show all hidden taskbar icons
         ## ms-settings:taskbar
 $notifyiconsettings = Get-ChildItem -Path 'registry::HKEY_CURRENT_USER\Control Panel\NotifyIconSettings' -Recurse -Force
@@ -1453,6 +1460,43 @@ cmd /c "reg add `"HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\S
 
 # boost foreground app cpu scheduling priority over background apps
 cmd /c "reg add `"HKLM\SYSTEM\CurrentControlSet\Control\PriorityControl`" /v `"Win32PrioritySeparation`" /t REG_DWORD /d `"26`" /f >nul 2>&1"
+
+# persistent foreground app process priority booster - whatever app has focus (the game) gets bumped to High
+try {
+$boosterScript = "$env:SystemRoot\Temp\foregroundboost.ps1"
+$boosterScriptContent = @'
+Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+public class WinSuxForeground {
+[DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+[DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
+}
+"@
+$excluded = @('explorer','SearchHost','TextInputHost','ShellExperienceHost','StartMenuExperienceHost')
+while ($true) {
+try {
+$hwnd = [WinSuxForeground]::GetForegroundWindow()
+$procId = 0
+[WinSuxForeground]::GetWindowThreadProcessId($hwnd, [ref]$procId) | Out-Null
+if ($procId -gt 0) {
+$proc = Get-Process -Id $procId -ErrorAction SilentlyContinue
+if ($proc -and $proc.ProcessName -notin $excluded -and $proc.PriorityClass -ne 'High') {
+$proc.PriorityClass = 'High'
+}
+}
+} catch { }
+Start-Sleep -Milliseconds 500
+}
+'@
+Set-Content -Path $boosterScript -Value $boosterScriptContent -Force
+
+$boosterAction = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$boosterScript`""
+$boosterTrigger = New-ScheduledTaskTrigger -AtLogOn
+$boosterSettings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit (New-TimeSpan -Days 0) -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1)
+Register-ScheduledTask -TaskName "Foreground App Boost" -Action $boosterAction -Trigger $boosterTrigger -Settings $boosterSettings -Force -ErrorAction SilentlyContinue | Out-Null
+Start-ScheduledTask -TaskName "Foreground App Boost" -ErrorAction SilentlyContinue
+} catch { }
 
 # reduce system timer jitter
 cmd /c "bcdedit /set disabledynamictick yes >nul 2>&1"
