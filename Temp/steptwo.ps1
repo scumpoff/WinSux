@@ -1981,19 +1981,44 @@ powercfg /setdcvalueindex 99999999-9999-9999-9999-999999999999 de830923-a562-41a
         Write-Host "Resolution du minuteur`n"
         ## services.msc
 
-# compile and create service
-Start-Process -Wait "C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe" -ArgumentList "-out:C:\Windows\SetTimerResolutionService.exe C:\Windows\Temp\settimerresolutionservice.cs" -WindowStyle Hidden
+# compile the service. the source is copied to C:\Windows\Temp by WinSux.ps1, but that folder is wiped
+# by the disk cleanup step further down, so fall back to the copy next to this script if it is gone
+$timerSource = "$env:SystemRoot\Temp\settimerresolutionservice.cs"
+if (-not (Test-Path $timerSource) -and $PSScriptRoot) {
+$alt = Join-Path $PSScriptRoot "settimerresolutionservice.cs"
+if (Test-Path $alt) { $timerSource = $alt }
+}
+$timerBinary = "$env:SystemRoot\SetTimerResolutionService.exe"
+$csc = "$env:SystemRoot\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
+if ((Test-Path $csc) -and (Test-Path $timerSource)) {
+Start-Process -Wait $csc -ArgumentList "-out:`"$timerBinary`" `"$timerSource`"" -WindowStyle Hidden
+}
 
 # remove old service if exists
 if (Get-Service -Name "Set Timer Resolution Service" -ErrorAction SilentlyContinue) {
-    sc.exe delete "Set Timer Resolution Service" | Out-Null
+    cmd /c "sc delete `"Set Timer Resolution Service`" >nul 2>&1"
     Start-Sleep -Seconds 2
 }
 
-# install and start service
-New-Service -Name "Set Timer Resolution Service" -BinaryPathName "$env:SystemDrive\Windows\SetTimerResolutionService.exe" -ErrorAction SilentlyContinue | Out-Null
-Set-Service -Name "Set Timer Resolution Service" -StartupType Auto -ErrorAction SilentlyContinue | Out-Null
-Set-Service -Name "Set Timer Resolution Service" -Status Running -ErrorAction SilentlyContinue | Out-Null
+# install and start the service with sc.exe rather than New-Service. New-Service was failing silently
+# here (-ErrorAction SilentlyContinue swallowed it), leaving the compiled binary on disk with no service
+# registered at all - the timer resolution tweak then did nothing on every boot.
+# sc.exe needs a space after each "option=" and the whole binPath quoted
+if (Test-Path $timerBinary) {
+cmd /c "sc create `"Set Timer Resolution Service`" binPath= `"$timerBinary`" start= auto DisplayName= `"Set Timer Resolution Service`" >nul 2>&1"
+cmd /c "sc failure `"Set Timer Resolution Service`" reset= 0 actions= restart/5000 >nul 2>&1"
+Start-Sleep -Seconds 1
+cmd /c "sc start `"Set Timer Resolution Service`" >nul 2>&1"
+Start-Sleep -Seconds 2
+$timerSvc = Get-Service -Name "Set Timer Resolution Service" -ErrorAction SilentlyContinue
+if ($timerSvc) {
+Write-Host "  service resolution du minuteur : $($timerSvc.Status)`n"
+} else {
+Write-Host "  service resolution du minuteur : echec de l'enregistrement`n"
+}
+} else {
+Write-Host "  service resolution du minuteur : compilation echouee, etape ignoree`n"
+}
 
 # enable global timer resolution requests
 cmd /c "reg add `"HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\kernel`" /v `"GlobalTimerResolutionRequests`" /t REG_DWORD /d `"1`" /f >nul 2>&1"
