@@ -39,97 +39,6 @@
     	taskkill /im trustedinstaller.exe /f >$null
   		}
         }
-        Write-Progress -Id 1 -Activity "Optimisation en cours" -Status "Suppression des applications UWP" -PercentComplete 6
-        Write-Host "Suppression des applications UWP`n"
-        ## ms-settings:appsfeatures
-        ## powershell -noexit -command "get-appxpackage | select name | format-table -autosize"
-
-# explicit removal list instead of "remove everything except a few" - the old approach also removed the
-# framework packages (VCLibs / .NET.Native / UI.Xaml / WindowsAppRuntime) that every remaining uwp app
-# depends on, so the apps that were deliberately kept (store, photos, paint, notepad) no longer launched
-$appsToRemove = @(
-'Clipchamp.Clipchamp','Microsoft.3DBuilder','Microsoft.549981C3F5F10','Microsoft.BingFinance','Microsoft.BingFoodAndDrink',
-'Microsoft.BingHealthAndFitness','Microsoft.BingNews','Microsoft.BingSearch','Microsoft.BingSports','Microsoft.BingTranslator',
-'Microsoft.BingTravel','Microsoft.BingWeather','Microsoft.Copilot','Microsoft.Windows.Copilot',
-'Microsoft.MicrosoftOfficeHub','Microsoft.Office.OneNote','Microsoft.Office.Sway','Microsoft.MicrosoftSolitaireCollection',
-'Microsoft.MicrosoftStickyNotes','Microsoft.MixedReality.Portal','Microsoft.NetworkSpeedTest','Microsoft.News',
-'Microsoft.Getstarted','Microsoft.GetHelp','Microsoft.MicrosoftJournal','Microsoft.Messaging','Microsoft.OneConnect',
-'Microsoft.People','Microsoft.Print3D','Microsoft.SkypeApp','Microsoft.Todos','Microsoft.Wallet','Microsoft.WindowsAlarms',
-'Microsoft.WindowsCamera','microsoft.windowscommunicationsapps','Microsoft.WindowsFeedbackHub','Microsoft.WindowsMaps',
-'Microsoft.WindowsSoundRecorder','Microsoft.Xbox.TCUI','Microsoft.XboxApp','Microsoft.XboxGameOverlay',
-'Microsoft.XboxSpeechToTextOverlay','Microsoft.YourPhone','Microsoft.ZuneMusic','Microsoft.ZuneVideo','Microsoft.GamingApp',
-'MicrosoftCorporationII.MicrosoftFamily','MicrosoftCorporationII.QuickAssist','MicrosoftTeams','MSTeams',
-'Microsoft.OutlookForWindows','MicrosoftWindows.CrossDevice','Microsoft.Windows.DevHome','Microsoft.PowerAutomateDesktop',
-'Microsoft.RemoteDesktop','Microsoft.Whiteboard','Microsoft.LinkedIn','Microsoft.Windows.Ai.Copilot.Provider'
-)
-$totalApps = $appsToRemove.Count
-$i = 0
-foreach ($appName in $appsToRemove) {
-$i++
-Write-Progress -Id 2 -ParentId 1 -Activity "Suppression des applications UWP" -Status "$appName ($i/$totalApps)" -PercentComplete (($i / $totalApps) * 100)
-# remove for every existing user
-Get-AppxPackage -AllUsers -Name $appName -ErrorAction SilentlyContinue | Remove-AppxPackage -AllUsers -ErrorAction SilentlyContinue
-# remove the provisioned copy too, otherwise windows reinstalls the app on the next update or new user profile
-Get-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName -eq $appName } |
-ForEach-Object { Remove-AppxProvisionedPackage -Online -PackageName $_.PackageName -ErrorAction SilentlyContinue | Out-Null }
-}
-Write-Progress -Id 2 -Activity "Suppression des applications UWP" -Completed
-
-        Write-Progress -Id 1 -Activity "Optimisation en cours" -Status "Suppression des fonctionnalites UWP" -PercentComplete 13
-        Write-Host "Suppression des fonctionnalites UWP`n"
-        ## ms-settings:optionalfeatures
-        ## powershell -noexit -command "dism /online /get-capabilities /format:table"
-
-# explicit list again - the old "remove everything except" removed Language.Basic (keyboard layout + locale
-# of the display language), DirectX.Configuration.Database and the printing capabilities
-$capsToRemove = @(
-'App.StepsRecorder','App.Support.QuickAssist','Browser.InternetExplorer','Hello.Face','MathRecognizer',
-'Media.WindowsMediaPlayer','Microsoft.Wallpapers.Extended','Microsoft.Windows.WordPad','OneCoreUAP.OneSync',
-'Print.Fax.Scan','XPS.Viewer','Language.Handwriting','Language.Speech','Language.TextToSpeech','Language.OCR'
-)
-$installedCaps = Get-WindowsCapability -Online -ErrorAction SilentlyContinue | Where-Object { $_.State -eq 'Installed' }
-$capsToRemove = $installedCaps | Where-Object {
-$name = ($_.Name -split '~')[0]
-$capsToRemove -contains $name
-}
-$totalCaps = $capsToRemove.Count
-$i = 0
-foreach ($cap in $capsToRemove) {
-$i++
-if ($totalCaps -gt 0) { Write-Progress -Id 2 -ParentId 1 -Activity "Suppression des fonctionnalites UWP" -Status "$($cap.Name) ($i/$totalCaps)" -PercentComplete (($i / $totalCaps) * 100) }
-try {
-Remove-WindowsCapability -Online -Name $cap.Name -ErrorAction SilentlyContinue | Out-Null
-} catch { }
-}
-Write-Progress -Id 2 -Activity "Suppression des fonctionnalites UWP" -Completed
-
-        Write-Progress -Id 1 -Activity "Optimisation en cours" -Status "Suppression des fonctionnalites heritees" -PercentComplete 19
-        Write-Host "Suppression des fonctionnalites heritees`n"
-        ## c:\windows\system32\optionalfeatures.exe
-		## powershell -noexit -command "dism /online /get-features /format:table"
-
-# explicit list - the old "disable everything except" turned off MediaPlayback (the media foundation video
-# stack: no video playback anywhere) and Printing-Foundation-Features (no printing at all)
-$featureNames = @(
-'MicrosoftWindowsPowerShellV2','MicrosoftWindowsPowerShellV2Root','SMB1Protocol','SMB1Protocol-Client',
-'SMB1Protocol-Server','SMB1Protocol-Deprecation','WorkFolders-Client','Printing-XPSServices-Features',
-'FaxServicesClientPackage','MSRDC-Infrastructure','Windows-Defender-ApplicationGuard','Internet-Explorer-Optional-amd64',
-'Microsoft-Windows-Subsystem-Linux','HypervisorPlatform','VirtualMachinePlatform','Containers-DisposableClientVM',
-'Client-DeviceLockdown','SmbDirect'
-)
-$featuresToDisable = Get-WindowsOptionalFeature -Online -ErrorAction SilentlyContinue |
-Where-Object { $_.State -eq 'Enabled' -and $featureNames -contains $_.FeatureName }
-$totalFeatures = $featuresToDisable.Count
-$i = 0
-foreach ($feature in $featuresToDisable) {
-$i++
-if ($totalFeatures -gt 0) { Write-Progress -Id 2 -ParentId 1 -Activity "Suppression des fonctionnalites heritees" -Status "$($feature.FeatureName) ($i/$totalFeatures)" -PercentComplete (($i / $totalFeatures) * 100) }
-try {
-Disable-WindowsOptionalFeature -Online -FeatureName $feature.FeatureName -NoRestart -WarningAction SilentlyContinue -ErrorAction SilentlyContinue | Out-Null
-} catch { }
-}
-Write-Progress -Id 2 -Activity "Suppression des fonctionnalites heritees" -Completed
-
 		Write-Progress -Id 1 -Activity "Optimisation en cours" -Status "Suppression des applications heritees" -PercentComplete 25
 		Write-Host "Suppression des applications heritees`n"
 		## appwiz.cpl
@@ -316,59 +225,6 @@ Run-Trusted -command "reg add `"HKLM\SOFTWARE\Microsoft\WindowsRuntime\Activatab
 Stop-Service -Name 'camsvc' -Force -ErrorAction SilentlyContinue
 $capabilityconsentstoragedb = "Remove-item `"$env:ProgramData\Microsoft\Windows\CapabilityAccessManager\CapabilityConsentStorage.db*`" -Force"
 Run-Trusted -command $capabilityconsentstoragedb
-
-# ------------------------------------------------------------------
-# repair pass - restore components older versions of this pack deleted
-# ------------------------------------------------------------------
-# earlier releases disabled/removed every optional feature and capability except a short keep-list, which
-# took out the media foundation playback stack, all printing, the display language pack and the directx
-# configuration database. this runs BEFORE windows update is paused further down, so features-on-demand
-# payloads can still be fetched. entirely best-effort: on a fresh install everything here is already
-# present and each call is a no-op
-        Write-Host "Verification des composants systeme`n"
-
-$featuresToRestore = @('MediaPlayback','WindowsMediaPlayer','Printing-Foundation-Features',
-'Printing-Foundation-InternetPrinting-Client','Printing-PrintToPDFServices-Features','NetFx4-AdvSrvs')
-foreach ($featureName in $featuresToRestore) {
-try {
-$state = (Get-WindowsOptionalFeature -Online -FeatureName $featureName -ErrorAction SilentlyContinue).State
-if ($state -and $state -ne 'Enabled') {
-Write-Host "  restauration : $featureName"
-Enable-WindowsOptionalFeature -Online -FeatureName $featureName -All -NoRestart -WarningAction SilentlyContinue -ErrorAction SilentlyContinue | Out-Null
-}
-} catch { }
-}
-
-# language pack for the current display language + the capabilities the ui actually depends on
-$uiLang = (Get-WinSystemLocale).Name
-$capsToRestore = @("Language.Basic~~~$uiLang~0.0.1.0","DirectX.Configuration.Database~~~~0.0.1.0","Print.Management.Console~~~~0.0.1.0")
-# a capability whose payload was removed by an older run is no longer listed at all, so the canonical
-# name above may not resolve. look it up by prefix first, and if nothing comes back still attempt the
-# install with the canonical name rather than skipping - a missing capability is exactly the case to fix
-$allCaps = Get-WindowsCapability -Online -ErrorAction SilentlyContinue
-foreach ($capName in $capsToRestore) {
-try {
-$prefix = ($capName -split '~')[0]
-# compare on everything except the trailing version number. matching on the bare prefix alone would
-# pick Language.Basic for whatever locale happens to come first alphabetically (af-ZA), not $uiLang
-$key = $capName -replace '~[\d\.]+$', ''
-$found = $allCaps | Where-Object { ($_.Name -replace '~[\d\.]+$', '') -eq $key } | Select-Object -First 1
-if ($found -and $found.State -eq 'Installed') { continue }
-$targetName = if ($found) { $found.Name } else { $capName }
-Write-Host "  restauration : $prefix"
-Add-WindowsCapability -Online -Name $targetName -ErrorAction SilentlyContinue | Out-Null
-} catch { }
-}
-
-# re-register the uwp framework packages and shell apps for the current user. an older run that removed
-# the frameworks leaves the surviving apps (store, photos, paint, notepad) unable to start until this runs
-try {
-Get-AppxPackage -AllUsers | Where-Object { $_.InstallLocation -and ($_.IsFramework -or $_.Name -like 'Microsoft.Windows*' -or $_.Name -like 'Microsoft.UI.Xaml*' -or $_.Name -like 'Microsoft.VCLibs*' -or $_.Name -like 'Microsoft.NET.Native*' -or $_.Name -like '*WindowsStore*') } |
-ForEach-Object {
-$manifest = Join-Path $_.InstallLocation 'AppXManifest.xml'
-if (Test-Path $manifest) { Add-AppxPackage -DisableDevelopmentMode -Register $manifest -ErrorAction SilentlyContinue | Out-Null }
-}
-} catch { }
 
 # disable memorycompression
         ## powershell -noexit -command "get-mmagent"
@@ -1051,9 +907,6 @@ try {
 Start-Process "winget" -ArgumentList "install `"9NF8H0H7WMLT`" --silent --accept-package-agreements --accept-source-agreements --disable-interactivity --no-upgrade" -Wait -WindowStyle Hidden -ErrorAction SilentlyContinue
 } catch { }
 }
-
-# uninstall winget
-Get-AppxPackage -allusers *Microsoft.Winget.Source* | Remove-AppxPackage -ErrorAction SilentlyContinue
 
 # delete download
 Remove-Item "$InstallFile" -Force -ErrorAction SilentlyContinue | Out-Null
@@ -1994,11 +1847,6 @@ cmd /c "reg add `"HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\kernel`"
 cmd /c "cd /d %systemroot%\system32 && lodctr /R >nul 2>&1"
 cmd /c "cd /d %systemroot%\sysWOW64 && lodctr /R >nul 2>&1"
 
-# remove uwp apps pesky on ms account
-        ## ms-settings:appsfeatures
-        ## powershell -noexit -command "get-appxpackage | select name | format-table -autosize"
-Get-AppxPackage -allusers *MSTeams* | Remove-AppxPackage -ErrorAction SilentlyContinue
-Get-AppxPackage -allusers *Microsoft.OutlookForWindows* | Remove-AppxPackage -ErrorAction SilentlyContinue
 
 		Write-Progress -Id 1 -Activity "Optimisation en cours" -Status "Nettoyage de disque" -PercentComplete 94
 		Write-Host "Nettoyage de disque`n"
@@ -2089,19 +1937,6 @@ Add-Check "Priorite premier plan (0x26)" { (Get-ItemProperty 'HKLM:\SYSTEM\Curre
 Add-Check "DPI non force (mise a l'echelle auto)" { -not (Get-ItemProperty 'HKCU:\Control Panel\Desktop' -Name LogPixels -ErrorAction SilentlyContinue) }
 Add-Check "UserPreferencesMask en REG_BINARY" { (Get-Item 'HKCU:\Control Panel\Desktop').GetValueKind('UserPreferencesMask') -eq 'Binary' }
 Add-Check "VRR / G-Sync actif" { (Get-ItemProperty 'HKCU:\Software\Microsoft\DirectX\UserGpuPreferences' -Name DirectXUserGlobalSettings -ErrorAction SilentlyContinue).DirectXUserGlobalSettings -match 'VRROptimizeEnable=1' }
-# counts the frameworks actually present instead of using `return` inside ForEach-Object: `return` there
-# only ends that one iteration and still emits into the pipeline, so the scriptblock returned an array
-# whose [bool] cast is always true - the check could never fail
-Add-Check "Frameworks UWP intacts" {
-$needed = @('Microsoft.VCLibs.140.00','Microsoft.NET.Native.Framework','Microsoft.UI.Xaml','Microsoft.WindowsAppRuntime')
-$installed = Get-AppxPackage -AllUsers -ErrorAction SilentlyContinue
-$found = @($needed | Where-Object { $n = $_; $installed | Where-Object { $_.Name -like "$n*" } })
-$found.Count -eq $needed.Count
-}
-Add-Check "Microsoft Store fonctionnel" { (Get-AppxPackage -AllUsers '*WindowsStore*') -ne $null }
-Add-Check "Lecture video (MediaPlayback)" { (Get-WindowsOptionalFeature -Online -FeatureName MediaPlayback -ErrorAction SilentlyContinue).State -eq 'Enabled' }
-Add-Check "Impression disponible" { (Get-WindowsOptionalFeature -Online -FeatureName Printing-Foundation-Features -ErrorAction SilentlyContinue).State -eq 'Enabled' }
-Add-Check "Pack de langue systeme present" { $l = (Get-WinSystemLocale).Name; (Get-WindowsCapability -Online -ErrorAction SilentlyContinue | Where-Object { $_.Name -like "Language.Basic~~~$l*" -and $_.State -eq 'Installed' }) -ne $null }
 # power settings are read straight from the registry, not parsed out of powercfg /query. the query
 # output is fully localised ("Index actuel du parametre de courant alternatif" on a french system), so
 # any regex over it silently returns false on every non-english machine - and a hidden setting is not

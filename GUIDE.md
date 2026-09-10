@@ -1,7 +1,7 @@
 # WinSux — Guide d'utilisation
 Par ELIAS
 
-Script d'optimisation Windows tout-en-un : installe les outils de base, débloate le système, réinstalle **automatiquement** le pilote NVIDIA proprement, applique des tweaks de performance CPU/GPU/réseau, et nettoie Windows.
+Script d'optimisation Windows tout-en-un : installe les outils de base, allège le système, réinstalle **automatiquement** le pilote NVIDIA proprement, applique des tweaks de performance CPU/GPU/réseau, et nettoie Windows.
 
 ## Prérequis
 - Windows 10/11 (Home/Pro/LTSC/IoT/Server)
@@ -57,16 +57,15 @@ Le script :
 
 ### 4. Phase 3 — boot normal, **entièrement automatique**
 `steptwo.ps1` se lance automatiquement :
-- débloat ciblé des applications UWP, capacités et fonctionnalités Windows
+- suppression des applications heritees (OneDrive, brlapi, GameInput, Remote Desktop, ancien Snipping Tool)
 - **téléchargement et installation automatiques du pilote NVIDIA** : identification du modèle, appel à l'API NVIDIA, téléchargement avec barre de progression, allègement du paquet, installation silencieuse
   - *aucune action requise* — une sélection manuelle n'est proposée qu'en dernier recours si les serveurs NVIDIA sont injoignables
 - profil NVIDIA Profile Inspector (low latency ultra, power management max perf, G-Sync activé)
 - optimisations : GameDVR off, HAGS on, MPO off, Nagle off, SysMain off, MSI mode GPU, DPC par cœur
 - optimisations CPU : pas de core parking, EPP performance, ramp-up « rocket », kernel non pagé, NTFS accéléré, prefetcher off, mitigations Spectre/Meltdown désactivées
-- **passe de réparation** : si une ancienne version du pack a déjà tourné sur la machine, le script réactive `MediaPlayback`, l'impression, `Language.Basic`, la base DirectX, réenregistre les paquets UWP cassés et nettoie le DPI forcé à 100 %
 - plan d'alimentation Ultimate Performance, résolution du minuteur système
 - nettoyage disque + point de restauration
-- **rapport de vérification** : 23 contrôles relus depuis l'état réel du système, affichés OK/ÉCHEC et enregistrés dans `C:\ProgramData\Optimisation\rapport.txt`
+- **rapport de vérification** : 18 contrôles relus depuis l'état réel du système, affichés OK/ÉCHEC et enregistrés dans `C:\ProgramData\Optimisation\rapport.txt`
 - **redémarrage final automatique** (20 s, le temps de lire le rapport)
 
 ## Politique thermique
@@ -90,11 +89,9 @@ Après le dernier redémarrage, le PC est prêt.
 
 ## Ce qui est volontairement CONSERVÉ
 Pour éviter de casser l'affichage et les applications :
-- les **frameworks UWP** (VCLibs, .NET.Native, UI.Xaml, WindowsAppRuntime) — sans eux, plus aucune app UWP ne démarre
+- **toutes les applications et fonctionnalités UWP** — le pack n'y touche plus du tout : aucun `Remove-AppxPackage`, aucune opération DISM (`Remove-WindowsCapability`, `Disable-WindowsOptionalFeature`). Ce sont elles qui bloquaient de longues minutes.
 - le **Microsoft Store**, **winget**, le **Panneau de configuration NVIDIA**
 - **Microsoft Edge** — le pack n'y touche pas
-- **MediaPlayback** et l'impression — leur suppression coupait toute lecture vidéo et toute impression
-- **Language.Basic** (clavier + locale de la langue d'affichage)
 - **NvContainer / NvCpl / HDAudio / PhysX** dans le pilote NVIDIA (audio HDMI/DP, panneau de configuration, vieux jeux PhysX)
 - la **mise à l'échelle DPI** choisie par Windows (plus de forçage à 100 %)
 
