@@ -1528,6 +1528,32 @@ cmd /c "reg add `"$usbPath\Device Parameters\Interrupt Management\Affinity Polic
 # global usb selective suspend switch, on top of the per-device values set earlier
 cmd /c "reg add `"HKLM\SYSTEM\CurrentControlSet\Services\USB`" /v `"DisableSelectiveSuspend`" /t REG_DWORD /d `"1`" /f >nul 2>&1"
 
+# hd audio controllers and the network adapter get the same interrupt treatment as the gpu and the usb
+# controllers. onboard hd audio in particular still ships in line-based interrupt mode on most boards,
+# which is the usual cause of audio dpc spikes and the crackling that comes with them.
+# NOTE: forcing MSI on an audio controller is the one tweak in this pack that can leave a device unable
+# to start on exotic hardware. if audio disappears after the reboot, delete MSISupported under
+# HKLM\SYSTEM\CurrentControlSet\Enum\PCI\<device>\Device Parameters\Interrupt Management\MessageSignaledInterruptProperties
+Get-ChildItem -Path "HKLM:\SYSTEM\ControlSet001\Enum\PCI" -ErrorAction SilentlyContinue | ForEach-Object {
+Get-ChildItem -Path $_.PSPath -ErrorAction SilentlyContinue | ForEach-Object {
+$deviceProps = Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue
+$deviceSvc = $deviceProps.Service
+$deviceClass = $deviceProps.ClassGUID
+$devPath = ($_.Name -replace 'HKEY_LOCAL_MACHINE', 'HKLM')
+# audio controllers
+if ($deviceSvc -match 'HDAudBus') {
+cmd /c "reg add `"$devPath\Device Parameters\Interrupt Management\MessageSignaledInterruptProperties`" /v `"MSISupported`" /t REG_DWORD /d `"1`" /f >nul 2>&1"
+cmd /c "reg add `"$devPath\Device Parameters\Interrupt Management\Affinity Policy`" /v `"DevicePriority`" /t REG_DWORD /d `"3`" /f >nul 2>&1"
+}
+# network adapters - class {4d36e972-e325-11ce-bfc1-08002be10318}. MSI is already on for modern nics,
+# so only the priority and the spread are set here
+if ($deviceClass -eq '{4d36e972-e325-11ce-bfc1-08002be10318}') {
+cmd /c "reg add `"$devPath\Device Parameters\Interrupt Management\Affinity Policy`" /v `"DevicePriority`" /t REG_DWORD /d `"3`" /f >nul 2>&1"
+cmd /c "reg add `"$devPath\Device Parameters\Interrupt Management\Affinity Policy`" /v `"DevicePolicy`" /t REG_DWORD /d `"5`" /f >nul 2>&1"
+}
+}
+}
+
 # input class driver queue depth. NOTE: this is one of the tweaks everyone copies and nobody measures.
 # the queue is a burst buffer - it does not add latency unless it is actually full, so shrinking it
 # mainly bounds how many stale packets get processed after a stall. harmless at 1000 Hz, but if you ever
