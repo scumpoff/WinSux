@@ -63,7 +63,8 @@ Le script :
   - *aucune action requise* — une sélection manuelle n'est proposée qu'en dernier recours si les serveurs NVIDIA sont injoignables
 - profil NVIDIA Profile Inspector (low latency ultra, power management max perf, G-Sync activé)
 - optimisations : GameDVR off, HAGS on, MPO off, Nagle off, SysMain off, MSI mode GPU, DPC par cœur
-- optimisations CPU : pas de core parking, EPP performance, ramp-up « rocket », kernel non pagé, NTFS accéléré
+- optimisations CPU : pas de core parking, EPP performance, ramp-up « rocket », kernel non pagé, NTFS accéléré, prefetcher off, mitigations Spectre/Meltdown désactivées
+- **passe de réparation** : si une ancienne version du pack a déjà tourné sur la machine, le script réactive `MediaPlayback`, l'impression, `Language.Basic`, la base DirectX, réenregistre les paquets UWP cassés et nettoie le DPI forcé à 100 %
 - plan d'alimentation Ultimate Performance, résolution du minuteur système
 - nettoyage disque + point de restauration
 - **redémarrage final automatique**
@@ -85,6 +86,7 @@ Pour éviter de casser l'affichage et les applications :
 
 ## ⚠️ Avertissements importants
 - **Sécurité désactivée** : Windows Defender (temps réel, cloud, tamper protection), UAC, BitLocker, SmartScreen, VBS/memory integrity sont désactivés. Le PC n'a plus de protection antivirus active. À réserver à une machine dédiée au gaming.
+- **Mitigations CPU désactivées** : les protections Spectre / Meltdown / MDS sont coupées (`FeatureSettingsOverride=3`) pour récupérer quelques % de CPU. Pour revenir en arrière : supprimer `FeatureSettingsOverride` et `FeatureSettingsOverrideMask` dans `HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management`, puis redémarrer.
 - **Edge est supprimé définitivement**, WebView2 compris. Quelques applications tierces qui dépendent de WebView2 (certains installeurs, Teams, apps Electron déguisées) peuvent alors refuser de démarrer. Installe un autre navigateur **avant** de lancer le script.
 - **Irréversible en grande partie**. Le point de restauration créé à la fin ne couvre pas les changements déjà appliqués avant sa création.
 - **Ne pas interrompre** les phases automatiques.

@@ -409,9 +409,64 @@ Stop-Service -Name 'camsvc' -Force -ErrorAction SilentlyContinue
 $capabilityconsentstoragedb = "Remove-item `"$env:ProgramData\Microsoft\Windows\CapabilityAccessManager\CapabilityConsentStorage.db*`" -Force"
 Run-Trusted -command $capabilityconsentstoragedb
 
+# ------------------------------------------------------------------
+# repair pass - restore components older versions of this pack deleted
+# ------------------------------------------------------------------
+# earlier releases disabled/removed every optional feature and capability except a short keep-list, which
+# took out the media foundation playback stack, all printing, the display language pack and the directx
+# configuration database. this runs BEFORE windows update is paused further down, so features-on-demand
+# payloads can still be fetched. entirely best-effort: on a fresh install everything here is already
+# present and each call is a no-op
+        Write-Host "Verification des composants systeme`n"
+
+$featuresToRestore = @('MediaPlayback','WindowsMediaPlayer','Printing-Foundation-Features',
+'Printing-Foundation-InternetPrinting-Client','Printing-PrintToPDFServices-Features','NetFx4-AdvSrvs')
+foreach ($featureName in $featuresToRestore) {
+try {
+$state = (Get-WindowsOptionalFeature -Online -FeatureName $featureName -ErrorAction SilentlyContinue).State
+if ($state -and $state -ne 'Enabled') {
+Write-Host "  restauration : $featureName"
+Enable-WindowsOptionalFeature -Online -FeatureName $featureName -All -NoRestart -WarningAction SilentlyContinue -ErrorAction SilentlyContinue | Out-Null
+}
+} catch { }
+}
+
+# language pack for the current display language + the capabilities the ui actually depends on
+$uiLang = (Get-WinSystemLocale).Name
+$capsToRestore = @("Language.Basic~~~$uiLang~0.0.1.0","DirectX.Configuration.Database~~~~0.0.1.0","Print.Management.Console~~~~0.0.1.0")
+# a capability whose payload was removed by an older run is no longer listed at all, so the canonical
+# name above may not resolve. look it up by prefix first, and if nothing comes back still attempt the
+# install with the canonical name rather than skipping - a missing capability is exactly the case to fix
+$allCaps = Get-WindowsCapability -Online -ErrorAction SilentlyContinue
+foreach ($capName in $capsToRestore) {
+try {
+$prefix = ($capName -split '~')[0]
+# compare on everything except the trailing version number. matching on the bare prefix alone would
+# pick Language.Basic for whatever locale happens to come first alphabetically (af-ZA), not $uiLang
+$key = $capName -replace '~[\d\.]+$', ''
+$found = $allCaps | Where-Object { ($_.Name -replace '~[\d\.]+$', '') -eq $key } | Select-Object -First 1
+if ($found -and $found.State -eq 'Installed') { continue }
+$targetName = if ($found) { $found.Name } else { $capName }
+Write-Host "  restauration : $prefix"
+Add-WindowsCapability -Online -Name $targetName -ErrorAction SilentlyContinue | Out-Null
+} catch { }
+}
+
+# re-register the uwp framework packages and shell apps for the current user. an older run that removed
+# the frameworks leaves the surviving apps (store, photos, paint, notepad) unable to start until this runs
+try {
+Get-AppxPackage -AllUsers | Where-Object { $_.InstallLocation -and ($_.IsFramework -or $_.Name -like 'Microsoft.Windows*' -or $_.Name -like 'Microsoft.UI.Xaml*' -or $_.Name -like 'Microsoft.VCLibs*' -or $_.Name -like 'Microsoft.NET.Native*' -or $_.Name -like '*WindowsStore*') } |
+ForEach-Object {
+$manifest = Join-Path $_.InstallLocation 'AppXManifest.xml'
+if (Test-Path $manifest) { Add-AppxPackage -DisableDevelopmentMode -Register $manifest -ErrorAction SilentlyContinue | Out-Null }
+}
+} catch { }
+
 # disable memorycompression
         ## powershell -noexit -command "get-mmagent"
 Disable-MMAgent -MemoryCompression -ErrorAction SilentlyContinue | Out-Null
+# page combining costs cpu cycles scanning for identical pages, pointless on a machine with spare ram
+Disable-MMAgent -PageCombining -ErrorAction SilentlyContinue | Out-Null
 
 # disable bitlocker
         ## control /name microsoft.bitlockerdriveencryption
@@ -1569,6 +1624,19 @@ cmd /c "reg add `"HKLM\SYSTEM\CurrentControlSet\Control`" /v `"SvcHostSplitThres
 
 # spread deferred procedure calls instead of serialising them
 cmd /c "reg add `"HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\kernel`" /v `"ThreadDpcEnable`" /t REG_DWORD /d `"0`" /f >nul 2>&1"
+
+# speculative-execution mitigations (spectre / meltdown / mds) tax every syscall and context switch.
+# turning them off is worth a few percent of cpu time, mostly visible in cpu-bound frame times.
+# SECURITY TRADE-OFF, deliberate: this machine already runs with defender, uac, vbs, smartscreen and the
+# vulnerable driver blocklist disabled, so the mitigations were the last component still paying a
+# permanent performance cost for a threat model this configuration has already abandoned.
+# to undo: delete both values below, or set FeatureSettingsOverride to 0, then reboot
+cmd /c "reg add `"HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management`" /v `"FeatureSettingsOverride`" /t REG_DWORD /d `"3`" /f >nul 2>&1"
+cmd /c "reg add `"HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management`" /v `"FeatureSettingsOverrideMask`" /t REG_DWORD /d `"3`" /f >nul 2>&1"
+
+# prefetcher off - it only helps mechanical disks, and costs background io on an ssd
+cmd /c "reg add `"HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management\PrefetchParameters`" /v `"EnablePrefetcher`" /t REG_DWORD /d `"0`" /f >nul 2>&1"
+cmd /c "reg add `"HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management\PrefetchParameters`" /v `"EnableSuperfetch`" /t REG_DWORD /d `"0`" /f >nul 2>&1"
 
 # ntfs: stop updating a last-access timestamp on every single file read, give the mft room to grow,
 # and let ntfs use more memory for its own caches
