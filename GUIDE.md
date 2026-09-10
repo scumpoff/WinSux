@@ -1,22 +1,24 @@
 # WinSux — Guide d'utilisation
 Par ELIAS
 
-Script d'optimisation Windows tout-en-un : installe les outils de base, débloate le système, réinstalle les pilotes GPU proprement, applique des tweaks de performance gaming, et nettoie Windows.
+Script d'optimisation Windows tout-en-un : installe les outils de base, débloate le système, supprime Microsoft Edge, réinstalle **automatiquement** le pilote NVIDIA proprement, applique des tweaks de performance CPU/GPU/réseau, et nettoie Windows.
 
 ## Prérequis
 - Windows 10/11 (Home/Pro/LTSC/IoT/Server)
 - Connexion Internet
+- **GPU NVIDIA** pour la partie pilote (le reste s'applique quand même sans NVIDIA)
 - Une fresh install de Windows recommandée (le script désactive Defender, UAC, BitLocker et d'autres protections système — voir avertissements en bas)
 
 ## Contenu du dossier
 Copie **tout le dossier tel quel** (ne pas séparer `WinSux.ps1` de `Temp/`) :
 ```
 WinSux-main/
-├── WinSux.ps1          <- script principal, à lancer
+├── WinSux.ps1           <- script principal, à lancer
 ├── AllowScripts.cmd     <- à lancer d'abord si PowerShell bloque les scripts
 ├── LICENSE
 ├── README.md
 ├── GUIDE.md             <- ce fichier
+├── _backup_avant_audit/ <- copie des scripts d'origine avant l'audit
 └── Temp/
     ├── stepone.ps1      <- étape 1 (safe mode)
     ├── steptwo.ps1      <- étape 2 (boot normal)
@@ -32,13 +34,14 @@ WinSux-main/
 ## Étapes d'utilisation
 
 ### 0. (Si besoin) Débloquer l'exécution des scripts
-Si Windows refuse de lancer `WinSux.ps1` (politique d'exécution PowerShell par défaut, ou fichiers marqués "téléchargés depuis Internet"), double-clique **`AllowScripts.cmd`** d'abord, choisis l'option **1**. Il autorise l'exécution des scripts PowerShell et débloque tous les fichiers du dossier.
+Si Windows refuse de lancer `WinSux.ps1`, double-clique **`AllowScripts.cmd`** d'abord, choisis l'option **1**. Il autorise l'exécution des scripts PowerShell et débloque tous les fichiers du dossier.
 
 ### 1. Lancer le script principal
-Double-clique **`WinSux.ps1`** → "Exécuter avec PowerShell" (ou clic droit dessus). Une popup UAC apparaît, accepte-la (le script s'auto-élève en administrateur).
+Double-clique **`WinSux.ps1`** → "Exécuter avec PowerShell". Une popup UAC apparaît, accepte-la (le script s'auto-élève en administrateur).
 
 ### 2. Phase 1 — automatique
 Le script :
+- mémorise le nom exact du GPU NVIDIA (avant que DDU efface le pilote)
 - copie les fichiers de `Temp/` vers `C:\Windows\Temp`
 - installe 7-Zip, les runtimes C++, DirectX
 - extrait DDU (Display Driver Uninstaller)
@@ -46,34 +49,42 @@ Le script :
 - active le démarrage en mode sans échec
 - **redémarre tout seul** après 5 secondes
 
-Ne touche à rien, laisse-le redémarrer.
-
 ### 3. Phase 2 — mode sans échec, automatique
-Windows redémarre en mode sans échec et `stepone.ps1` se lance automatiquement :
-- désactive Windows Defender, UAC, protections diverses (nécessite le mode sans échec pour certaines clés protégées)
+`stepone.ps1` se lance automatiquement :
+- désactive Windows Defender, UAC, protections diverses
 - désinstalle les pilotes GPU/audio existants (NVIDIA, AMD, Intel, Realtek) via DDU
 - **redémarre à nouveau tout seul**
 
-### 4. Phase 3 — boot normal, semi-manuelle
-Windows redémarre normalement et `steptwo.ps1` se lance automatiquement :
-- supprime Edge, les applications/fonctionnalités UWP et héritées inutiles
-- **⚠️ une pause manuelle ici** : un menu texte demande de choisir ton GPU (NVIDIA / AMD / Intel / Ignorer)
-  - Ton navigateur par défaut s'ouvre sur la page des pilotes officiels → télécharge le pilote
-  - reviens dans la fenêtre PowerShell, appuie sur une touche
-  - une fenêtre de sélection de fichier s'ouvre → choisis le pilote téléchargé
-  - le script débloate le pilote (retire GeForce Experience/telemetry/etc.), l'installe, puis applique un profil de tuning complet (NVIDIA : NVIDIA Profile Inspector avec low latency ultra, power management max perf, etc.)
-- applique les optimisations gaming : GameDVR off, HAGS on, Nagle's algorithm off, SysMain off
-- configure le plan d'alimentation (Ultimate Performance), la résolution du minuteur système
-- nettoyage disque + création d'un point de restauration
+### 4. Phase 3 — boot normal, **entièrement automatique**
+`steptwo.ps1` se lance automatiquement :
+- débloat ciblé des applications UWP, capacités et fonctionnalités Windows
+- **suppression complète de Microsoft Edge** (navigateur + WebView2 + updater + services + tâches planifiées + blocage de la réinstallation)
+- **téléchargement et installation automatiques du pilote NVIDIA** : identification du modèle, appel à l'API NVIDIA, téléchargement avec barre de progression, allègement du paquet, installation silencieuse
+  - *aucune action requise* — une sélection manuelle n'est proposée qu'en dernier recours si les serveurs NVIDIA sont injoignables
+- profil NVIDIA Profile Inspector (low latency ultra, power management max perf, G-Sync activé)
+- optimisations : GameDVR off, HAGS on, MPO off, Nagle off, SysMain off, MSI mode GPU, DPC par cœur
+- optimisations CPU : pas de core parking, EPP performance, ramp-up « rocket », kernel non pagé, NTFS accéléré
+- plan d'alimentation Ultimate Performance, résolution du minuteur système
+- nettoyage disque + point de restauration
 - **redémarrage final automatique**
 
 ### 5. Terminé
-Après le dernier redémarrage, le PC est prêt : debloaté, pilotes propres, tweaks gaming appliqués.
+Après le dernier redémarrage, le PC est prêt.
 
 ## Temps d'exécution
-Compte 20-40 minutes au total (dépend surtout du téléchargement manuel du pilote GPU à l'étape 4), incluant 2 redémarrages automatiques.
+15-30 minutes au total, incluant 2 redémarrages automatiques. Plus aucune pause manuelle en fonctionnement normal.
+
+## Ce qui est volontairement CONSERVÉ
+Pour éviter de casser l'affichage et les applications :
+- les **frameworks UWP** (VCLibs, .NET.Native, UI.Xaml, WindowsAppRuntime) — sans eux, plus aucune app UWP ne démarre
+- le **Microsoft Store**, **winget**, le **Panneau de configuration NVIDIA**
+- **MediaPlayback** et l'impression — leur suppression coupait toute lecture vidéo et toute impression
+- **Language.Basic** (clavier + locale de la langue d'affichage)
+- **NvContainer / NvCpl / HDAudio / PhysX** dans le pilote NVIDIA (audio HDMI/DP, panneau de configuration, vieux jeux PhysX)
+- la **mise à l'échelle DPI** choisie par Windows (plus de forçage à 100 %)
 
 ## ⚠️ Avertissements importants
-- **Sécurité désactivée** : Windows Defender (temps réel, cloud, tamper protection), UAC, BitLocker, SmartScreen, VBS/memory integrity sont désactivés. Le PC n'a plus de protection antivirus active. À réserver à une machine dédiée au gaming, pas pour naviguer/télécharger sans précaution.
-- **Irréversible en grande partie** : certains changements (suppression d'apps, désinstallation d'Edge, debloat des pilotes) ne se défont pas facilement. Le point de restauration créé à la fin ne couvre pas les changements déjà appliqués avant sa création.
-- **Ne pas interrompre** les phases automatiques (surtout pendant les redémarrages et l'exécution des scripts RunOnce).
+- **Sécurité désactivée** : Windows Defender (temps réel, cloud, tamper protection), UAC, BitLocker, SmartScreen, VBS/memory integrity sont désactivés. Le PC n'a plus de protection antivirus active. À réserver à une machine dédiée au gaming.
+- **Edge est supprimé définitivement**, WebView2 compris. Quelques applications tierces qui dépendent de WebView2 (certains installeurs, Teams, apps Electron déguisées) peuvent alors refuser de démarrer. Installe un autre navigateur **avant** de lancer le script.
+- **Irréversible en grande partie**. Le point de restauration créé à la fin ne couvre pas les changements déjà appliqués avant sa création.
+- **Ne pas interrompre** les phases automatiques.

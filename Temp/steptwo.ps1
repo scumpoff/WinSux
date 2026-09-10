@@ -44,38 +44,34 @@
         ## ms-settings:appsfeatures
         ## powershell -noexit -command "get-appxpackage | select name | format-table -autosize"
 
-$appsToRemove = Get-AppXPackage -AllUsers | Where-Object {
-# breaks file explorer
-$_.Name -notlike '*CBS*' -and
-$_.Name -notlike '*Microsoft.AV1VideoExtension*' -and
-$_.Name -notlike '*Microsoft.AVCEncoderVideoExtension*' -and
-$_.Name -notlike '*Microsoft.HEIFImageExtension*' -and
-$_.Name -notlike '*Microsoft.HEVCVideoExtension*' -and
-$_.Name -notlike '*Microsoft.MPEG2VideoExtension*' -and
-$_.Name -notlike '*Microsoft.Paint*' -and
-$_.Name -notlike '*Microsoft.RawImageExtension*' -and
-# breaks windows server defender
-$_.Name -notlike '*Microsoft.SecHealthUI*' -and
-$_.Name -notlike '*Microsoft.VP9VideoExtensions*' -and
-$_.Name -notlike '*Microsoft.WebMediaExtensions*' -and
-$_.Name -notlike '*Microsoft.WebpImageExtension*' -and
-$_.Name -notlike '*Microsoft.Windows.Photos*' -and
-# breaks windows server task bar
-$_.Name -notlike '*Microsoft.Windows.ShellExperienceHost*' -and
-# breaks windows server start menu
-$_.Name -notlike '*Microsoft.Windows.StartMenuExperienceHost*' -and
-$_.Name -notlike '*Microsoft.WindowsNotepad*' -and
-$_.Name -notlike '*Microsoft.WindowsStore*' -and
-$_.Name -notlike '*NVIDIACorp.NVIDIAControlPanel*' -and
-# breaks windows server immersive control panel
-$_.Name -notlike '*windows.immersivecontrolpanel*'
-}
+# explicit removal list instead of "remove everything except a few" - the old approach also removed the
+# framework packages (VCLibs / .NET.Native / UI.Xaml / WindowsAppRuntime) that every remaining uwp app
+# depends on, so the apps that were deliberately kept (store, photos, paint, notepad) no longer launched
+$appsToRemove = @(
+'Clipchamp.Clipchamp','Microsoft.3DBuilder','Microsoft.549981C3F5F10','Microsoft.BingFinance','Microsoft.BingFoodAndDrink',
+'Microsoft.BingHealthAndFitness','Microsoft.BingNews','Microsoft.BingSearch','Microsoft.BingSports','Microsoft.BingTranslator',
+'Microsoft.BingTravel','Microsoft.BingWeather','Microsoft.Copilot','Microsoft.Windows.Copilot','Microsoft.Edge.GameAssist',
+'Microsoft.MicrosoftOfficeHub','Microsoft.Office.OneNote','Microsoft.Office.Sway','Microsoft.MicrosoftSolitaireCollection',
+'Microsoft.MicrosoftStickyNotes','Microsoft.MixedReality.Portal','Microsoft.NetworkSpeedTest','Microsoft.News',
+'Microsoft.Getstarted','Microsoft.GetHelp','Microsoft.MicrosoftJournal','Microsoft.Messaging','Microsoft.OneConnect',
+'Microsoft.People','Microsoft.Print3D','Microsoft.SkypeApp','Microsoft.Todos','Microsoft.Wallet','Microsoft.WindowsAlarms',
+'Microsoft.WindowsCamera','microsoft.windowscommunicationsapps','Microsoft.WindowsFeedbackHub','Microsoft.WindowsMaps',
+'Microsoft.WindowsSoundRecorder','Microsoft.Xbox.TCUI','Microsoft.XboxApp','Microsoft.XboxGameOverlay',
+'Microsoft.XboxSpeechToTextOverlay','Microsoft.YourPhone','Microsoft.ZuneMusic','Microsoft.ZuneVideo','Microsoft.GamingApp',
+'MicrosoftCorporationII.MicrosoftFamily','MicrosoftCorporationII.QuickAssist','MicrosoftTeams','MSTeams',
+'Microsoft.OutlookForWindows','MicrosoftWindows.CrossDevice','Microsoft.Windows.DevHome','Microsoft.PowerAutomateDesktop',
+'Microsoft.RemoteDesktop','Microsoft.Whiteboard','Microsoft.LinkedIn','Microsoft.Windows.Ai.Copilot.Provider'
+)
 $totalApps = $appsToRemove.Count
 $i = 0
-foreach ($app in $appsToRemove) {
+foreach ($appName in $appsToRemove) {
 $i++
-if ($totalApps -gt 0) { Write-Progress -Id 2 -ParentId 1 -Activity "Suppression des applications UWP" -Status "$($app.Name) ($i/$totalApps)" -PercentComplete (($i / $totalApps) * 100) }
-$app | Remove-AppxPackage -ErrorAction SilentlyContinue
+Write-Progress -Id 2 -ParentId 1 -Activity "Suppression des applications UWP" -Status "$appName ($i/$totalApps)" -PercentComplete (($i / $totalApps) * 100)
+# remove for every existing user
+Get-AppxPackage -AllUsers -Name $appName -ErrorAction SilentlyContinue | Remove-AppxPackage -AllUsers -ErrorAction SilentlyContinue
+# remove the provisioned copy too, otherwise windows reinstalls the app on the next update or new user profile
+Get-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName -eq $appName } |
+ForEach-Object { Remove-AppxProvisionedPackage -Online -PackageName $_.PackageName -ErrorAction SilentlyContinue | Out-Null }
 }
 Write-Progress -Id 2 -Activity "Suppression des applications UWP" -Completed
 
@@ -84,21 +80,17 @@ Write-Progress -Id 2 -Activity "Suppression des applications UWP" -Completed
         ## ms-settings:optionalfeatures
         ## powershell -noexit -command "dism /online /get-capabilities /format:table"
 
-$capsToRemove = Get-WindowsCapability -Online | Where-Object {
-$_.Name -notlike '*Microsoft.Windows.Ethernet*' -and
-# windows 10
-$_.Name -notlike '*Microsoft.Windows.MSPaint*' -and
-# windows 10
-$_.Name -notlike '*Microsoft.Windows.Notepad*' -and
-$_.Name -notlike '*Microsoft.Windows.Notepad.System*' -and
-$_.Name -notlike '*Microsoft.Windows.Wifi*' -and
-$_.Name -notlike '*NetFX3*' -and
-# windows 11 breaks msi installers if removed
-$_.Name -notlike '*VBSCRIPT*' -and
-# breaks monitoring programs
-$_.Name -notlike '*WMIC*' -and
-# windows 10 breaks uwp snippingtool if removed
-$_.Name -notlike '*Windows.Client.ShellComponents*'
+# explicit list again - the old "remove everything except" removed Language.Basic (keyboard layout + locale
+# of the display language), DirectX.Configuration.Database and the printing capabilities
+$capsToRemove = @(
+'App.StepsRecorder','App.Support.QuickAssist','Browser.InternetExplorer','Hello.Face','MathRecognizer',
+'Media.WindowsMediaPlayer','Microsoft.Wallpapers.Extended','Microsoft.Windows.WordPad','OneCoreUAP.OneSync',
+'Print.Fax.Scan','XPS.Viewer','Language.Handwriting','Language.Speech','Language.TextToSpeech','Language.OCR'
+)
+$installedCaps = Get-WindowsCapability -Online -ErrorAction SilentlyContinue | Where-Object { $_.State -eq 'Installed' }
+$capsToRemove = $installedCaps | Where-Object {
+$name = ($_.Name -split '~')[0]
+$capsToRemove -contains $name
 }
 $totalCaps = $capsToRemove.Count
 $i = 0
@@ -106,7 +98,7 @@ foreach ($cap in $capsToRemove) {
 $i++
 if ($totalCaps -gt 0) { Write-Progress -Id 2 -ParentId 1 -Activity "Suppression des fonctionnalites UWP" -Status "$($cap.Name) ($i/$totalCaps)" -PercentComplete (($i / $totalCaps) * 100) }
 try {
-Remove-WindowsCapability -Online -Name $cap.Name | Out-Null
+Remove-WindowsCapability -Online -Name $cap.Name -ErrorAction SilentlyContinue | Out-Null
 } catch { }
 }
 Write-Progress -Id 2 -Activity "Suppression des fonctionnalites UWP" -Completed
@@ -116,39 +108,24 @@ Write-Progress -Id 2 -Activity "Suppression des fonctionnalites UWP" -Completed
         ## c:\windows\system32\optionalfeatures.exe
 		## powershell -noexit -command "dism /online /get-features /format:table"
 
-$featuresToDisable = Get-WindowsOptionalFeature -Online | Where-Object {
-$_.FeatureName -notlike '*DirectPlay*' -and
-$_.FeatureName -notlike '*LegacyComponents*' -and
-$_.FeatureName -notlike '*NetFx3*' -and
-# breaks windows server turn windows features on or off
-$_.FeatureName -notlike '*NetFx4*' -and
-$_.FeatureName -notlike '*NetFx4-AdvSrvs*' -and
-# breaks windows server turn windows features on or off
-$_.FeatureName -notlike '*NetFx4ServerFeatures*' -and
-# breaks search
-$_.FeatureName -notlike '*SearchEngine-Client-Package*' -and
-# breaks windows server desktop
-$_.FeatureName -notlike '*Server-Shell*' -and
-# breaks windows server defender
-$_.FeatureName -notlike '*Windows-Defender*' -and
-# breaks windows server internet
-$_.FeatureName -notlike '*Server-Drivers-General*' -and
-# breaks windows server internet
-$_.FeatureName -notlike '*ServerCore-Drivers-General*' -and
-# breaks windows server internet
-$_.FeatureName -notlike '*ServerCore-Drivers-General-WOW64*' -and
-# breaks windows server turn windows features on or off
-$_.FeatureName -notlike '*Server-Gui-Mgmt*' -and
-# breaks windows server nvidia app
-$_.FeatureName -notlike '*WirelessNetworking*'
-}
+# explicit list - the old "disable everything except" turned off MediaPlayback (the media foundation video
+# stack: no video playback anywhere) and Printing-Foundation-Features (no printing at all)
+$featureNames = @(
+'MicrosoftWindowsPowerShellV2','MicrosoftWindowsPowerShellV2Root','SMB1Protocol','SMB1Protocol-Client',
+'SMB1Protocol-Server','SMB1Protocol-Deprecation','WorkFolders-Client','Printing-XPSServices-Features',
+'FaxServicesClientPackage','MSRDC-Infrastructure','Windows-Defender-ApplicationGuard','Internet-Explorer-Optional-amd64',
+'Microsoft-Windows-Subsystem-Linux','HypervisorPlatform','VirtualMachinePlatform','Containers-DisposableClientVM',
+'Client-DeviceLockdown','SmbDirect'
+)
+$featuresToDisable = Get-WindowsOptionalFeature -Online -ErrorAction SilentlyContinue |
+Where-Object { $_.State -eq 'Enabled' -and $featureNames -contains $_.FeatureName }
 $totalFeatures = $featuresToDisable.Count
 $i = 0
 foreach ($feature in $featuresToDisable) {
 $i++
 if ($totalFeatures -gt 0) { Write-Progress -Id 2 -ParentId 1 -Activity "Suppression des fonctionnalites heritees" -Status "$($feature.FeatureName) ($i/$totalFeatures)" -PercentComplete (($i / $totalFeatures) * 100) }
 try {
-Disable-WindowsOptionalFeature -Online -FeatureName $feature.FeatureName -NoRestart -WarningAction SilentlyContinue | Out-Null
+Disable-WindowsOptionalFeature -Online -FeatureName $feature.FeatureName -NoRestart -WarningAction SilentlyContinue -ErrorAction SilentlyContinue | Out-Null
 } catch { }
 }
 Write-Progress -Id 2 -Activity "Suppression des fonctionnalites heritees" -Completed
@@ -156,6 +133,98 @@ Write-Progress -Id 2 -Activity "Suppression des fonctionnalites heritees" -Compl
 		Write-Progress -Id 1 -Activity "Optimisation en cours" -Status "Suppression des applications heritees" -PercentComplete 25
 		Write-Host "Suppression des applications heritees`n"
 		## appwiz.cpl
+
+# ------------------------------------------------------------------
+# uninstall microsoft edge completely (browser + webview2 + updater)
+# ------------------------------------------------------------------
+        Write-Host "Suppression de Microsoft Edge`n"
+
+# the edge uninstaller refuses to run unless the machine is flagged as being in a region where uninstall is
+# allowed (eea). point the region policy at an empty ruleset so setup.exe --uninstall is accepted everywhere
+$regionPolicy = "$env:SystemRoot\System32\IntegratedServicesRegionPolicySet.json"
+if (Test-Path $regionPolicy) {
+cmd /c "takeown /f `"$regionPolicy`" >nul 2>&1"
+cmd /c "icacls `"$regionPolicy`" /grant *S-1-5-32-544:F >nul 2>&1"
+Copy-Item $regionPolicy "$regionPolicy.bak" -Force -ErrorAction SilentlyContinue
+Set-Content -Path $regionPolicy -Value '{"policies":[]}' -Force -ErrorAction SilentlyContinue
+}
+cmd /c "reg add `"HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies`" /v `"NoRemove`" /t REG_DWORD /d `"0`" /f >nul 2>&1"
+
+# stop everything edge-related still running
+'msedge','msedgewebview2','MicrosoftEdgeUpdate','identity_helper','elevation_service' | ForEach-Object {
+Stop-Process -Name $_ -Force -ErrorAction SilentlyContinue
+}
+
+# uninstall via each edge/webview2/updater setup.exe found on disk (system-level and user-level installs)
+$edgeRoots = @(
+"$env:ProgramFiles\Microsoft\Edge\Application",
+"${env:ProgramFiles(x86)}\Microsoft\Edge\Application",
+"$env:ProgramFiles\Microsoft\EdgeCore",
+"${env:ProgramFiles(x86)}\Microsoft\EdgeCore",
+"$env:ProgramFiles\Microsoft\EdgeWebView\Application",
+"${env:ProgramFiles(x86)}\Microsoft\EdgeWebView\Application"
+)
+foreach ($root in $edgeRoots) {
+if (-not (Test-Path $root)) { continue }
+Get-ChildItem -Path $root -Filter "setup.exe" -Recurse -ErrorAction SilentlyContinue | ForEach-Object {
+foreach ($target in @("--uninstall --msedge --system-level --verbose-logging --force-uninstall",
+"--uninstall --msedge --user-level --verbose-logging --force-uninstall",
+"--uninstall --msedgewebview --system-level --verbose-logging --force-uninstall")) {
+Start-Process -FilePath $_.FullName -ArgumentList $target -Wait -WindowStyle Hidden -ErrorAction SilentlyContinue
+}
+}
+}
+
+# the edge updater has its own uninstaller
+Get-ChildItem -Path "${env:ProgramFiles(x86)}\Microsoft\EdgeUpdate","$env:ProgramFiles\Microsoft\EdgeUpdate" -Filter "MicrosoftEdgeUpdate.exe" -Recurse -ErrorAction SilentlyContinue |
+ForEach-Object { Start-Process -FilePath $_.FullName -ArgumentList "/uninstall" -Wait -WindowStyle Hidden -ErrorAction SilentlyContinue }
+
+# appx copy of edge (win11 ships one) + the edge game assist package
+Get-AppxPackage -AllUsers "*MicrosoftEdge*" -ErrorAction SilentlyContinue | Remove-AppxPackage -AllUsers -ErrorAction SilentlyContinue
+Get-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName -like "*MicrosoftEdge*" } |
+ForEach-Object { Remove-AppxProvisionedPackage -Online -PackageName $_.PackageName -ErrorAction SilentlyContinue | Out-Null }
+
+# edge services & scheduled tasks
+'edgeupdate','edgeupdatem','MicrosoftEdgeElevationService' | ForEach-Object {
+cmd /c "sc stop `"$_`" >nul 2>&1"
+cmd /c "sc delete `"$_`" >nul 2>&1"
+}
+Get-ScheduledTask -ErrorAction SilentlyContinue | Where-Object { $_.TaskName -like "*MicrosoftEdge*" } |
+Unregister-ScheduledTask -Confirm:$false -ErrorAction SilentlyContinue
+
+# leftover folders, shortcuts and registry
+$edgeLeftovers = @(
+"$env:ProgramFiles\Microsoft\Edge","${env:ProgramFiles(x86)}\Microsoft\Edge",
+"$env:ProgramFiles\Microsoft\EdgeCore","${env:ProgramFiles(x86)}\Microsoft\EdgeCore",
+"$env:ProgramFiles\Microsoft\EdgeUpdate","${env:ProgramFiles(x86)}\Microsoft\EdgeUpdate",
+"$env:ProgramFiles\Microsoft\EdgeWebView","${env:ProgramFiles(x86)}\Microsoft\EdgeWebView",
+"$env:LOCALAPPDATA\Microsoft\Edge","$env:LOCALAPPDATA\Microsoft\EdgeUpdate",
+"$env:ProgramData\Microsoft\Windows\Start Menu\Programs\Microsoft Edge.lnk",
+"$env:PUBLIC\Desktop\Microsoft Edge.lnk","$env:USERPROFILE\Desktop\Microsoft Edge.lnk"
+)
+foreach ($leftover in $edgeLeftovers) {
+cmd /c "takeown /f `"$leftover`" /r /d y >nul 2>&1"
+cmd /c "icacls `"$leftover`" /grant *S-1-5-32-544:F /t >nul 2>&1"
+Remove-Item $leftover -Recurse -Force -ErrorAction SilentlyContinue | Out-Null
+}
+cmd /c "reg delete `"HKLM\SOFTWARE\Microsoft\Edge`" /f >nul 2>&1"
+cmd /c "reg delete `"HKLM\SOFTWARE\WOW6432Node\Microsoft\Edge`" /f >nul 2>&1"
+cmd /c "reg delete `"HKCU\SOFTWARE\Microsoft\Edge`" /f >nul 2>&1"
+cmd /c "reg delete `"HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Microsoft Edge`" /f >nul 2>&1"
+cmd /c "reg delete `"HKLM\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\Microsoft Edge`" /f >nul 2>&1"
+cmd /c "reg delete `"HKLM\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\Microsoft Edge Update`" /f >nul 2>&1"
+
+# block any reinstall coming back through windows update / the edge updater
+cmd /c "reg add `"HKLM\SOFTWARE\Microsoft\EdgeUpdate`" /v `"DoNotUpdateToEdgeWithChromium`" /t REG_DWORD /d `"1`" /f >nul 2>&1"
+cmd /c "reg add `"HKLM\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate`" /v `"DoNotUpdateToEdgeWithChromium`" /t REG_DWORD /d `"1`" /f >nul 2>&1"
+cmd /c "reg add `"HKLM\SOFTWARE\Policies\Microsoft\EdgeUpdate`" /v `"InstallDefault`" /t REG_DWORD /d `"0`" /f >nul 2>&1"
+cmd /c "reg add `"HKLM\SOFTWARE\Policies\Microsoft\EdgeUpdate`" /v `"Install{56EB18F8-B008-4CBD-B6D2-8C97FE7E9062}`" /t REG_DWORD /d `"0`" /f >nul 2>&1"
+cmd /c "reg add `"HKLM\SOFTWARE\Policies\Microsoft\EdgeUpdate`" /v `"Install{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}`" /t REG_DWORD /d `"0`" /f >nul 2>&1"
+cmd /c "reg add `"HKLM\SOFTWARE\Policies\Microsoft\EdgeUpdate`" /v `"Install{2CD8A007-E189-409D-A2C8-9AF4EF3C72AA}`" /t REG_DWORD /d `"0`" /f >nul 2>&1"
+cmd /c "reg add `"HKLM\SOFTWARE\Policies\Microsoft\EdgeUpdate`" /v `"UpdateDefault`" /t REG_DWORD /d `"0`" /f >nul 2>&1"
+cmd /c "reg add `"HKLM\SOFTWARE\Policies\Microsoft\MicrosoftEdge\Main`" /v `"AllowPrelaunch`" /t REG_DWORD /d `"0`" /f >nul 2>&1"
+cmd /c "reg add `"HKLM\SOFTWARE\Policies\Microsoft\Edge`" /v `"StartupBoostEnabled`" /t REG_DWORD /d `"0`" /f >nul 2>&1"
+cmd /c "reg add `"HKLM\SOFTWARE\Policies\Microsoft\Edge`" /v `"BackgroundModeEnabled`" /t REG_DWORD /d `"0`" /f >nul 2>&1"
 
 # uninstall brlapi
 cmd /c "sc stop `"brlapi`" >nul 2>&1"
@@ -829,6 +898,25 @@ if ($hasNvidia) {
 
 # fully automatic driver detection & download - no user action needed
 $InstallFile = $null
+
+# powershell 5.1 negotiates ssl3/tls1.0 by default; nvidia's endpoints only accept tls 1.2+, so every
+# Invoke-RestMethod below used to fail instantly and drop straight through to the manual file picker
+try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls11 } catch { }
+try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor 12288 } catch { }
+$nvUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+
+# small retry helper - nvidia's lookup services time out often enough that a single attempt is unreliable
+function Get-NvJson([string]$url) {
+for ($attempt = 1; $attempt -le 3; $attempt++) {
+try {
+return Invoke-RestMethod -Uri $url -UseBasicParsing -TimeoutSec 30 -Headers @{ "User-Agent" = $nvUserAgent } -ErrorAction Stop
+} catch {
+Start-Sleep -Seconds 3
+}
+}
+return $null
+}
+
 try {
 # read the gpu name captured before ddu wiped the driver (fallback to a live query if the cache file is missing)
 $gpuNameCache = "$env:SystemRoot\Temp\gpuname.txt"
@@ -837,39 +925,70 @@ $gpuName = (Get-Content $gpuNameCache -Raw).Trim()
 } else {
 $gpuName = (Get-CimInstance Win32_VideoController | Where-Object { $_.Name -like "*NVIDIA*" } | Select-Object -First 1).Name
 }
-$productList = Invoke-RestMethod "https://www.nvidia.com/Download/API/lookupValueSearch.aspx?TypeID=3"
-$cleanGpuName = $gpuName -replace '^NVIDIA\s+', ''
-$match = $productList.LookupValueSearch.LookupValues.LookupValue | Where-Object {
-($_.Name -replace '^NVIDIA\s+', '') -eq $cleanGpuName
-} | Select-Object -First 1
+
+$downloadUrl = $null
+if ($gpuName) {
+# normalise: strip the vendor prefix, the memory suffix some oems append, and collapse whitespace
+$cleanGpuName = ($gpuName -replace '^NVIDIA\s+', '' -replace '\s+\d+GB$', '' -replace '\s+', ' ').Trim()
+
+$productList = Get-NvJson "https://www.nvidia.com/Download/API/lookupValueSearch.aspx?TypeID=3"
+$candidates = @()
+if ($productList) { $candidates = @($productList.LookupValueSearch.LookupValues.LookupValue) }
+
+$match = $null
+if ($candidates.Count -gt 0) {
+# 1. exact name match
+$match = $candidates | Where-Object { (($_.Name -replace '^NVIDIA\s+', '').Trim()) -ieq $cleanGpuName } | Select-Object -First 1
+# 2. substring match, longest name first so "RTX 4070 Ti SUPER" wins over "RTX 4070"
 if (-not $match) {
-$match = $productList.LookupValueSearch.LookupValues.LookupValue | Where-Object {
-$_.Name -like "*$cleanGpuName*"
-} | Select-Object -First 1
+$match = $candidates | Where-Object { $_.Name -and ($cleanGpuName -like "*$($_.Name -replace '^NVIDIA\s+','')*") } |
+Sort-Object { $_.Name.Length } -Descending | Select-Object -First 1
 }
+if (-not $match) {
+$match = $candidates | Where-Object { $_.Name -like "*$cleanGpuName*" } | Select-Object -First 1
+}
+}
+
 if ($match) {
 $pfid = $match.Value
 $psid = $match.ParentID
 $osVersion = [System.Environment]::OSVersion.Version
 $osID = if ($osVersion.Build -ge 22000) { 135 } else { 57 }
-$driverInfo = Invoke-RestMethod "https://gfwsl.geforce.com/services_toolkit/services/com/nvidia/services/AjaxDriverService.php?func=DriverManualLookup&psid=$psid&pfid=$pfid&osID=$osID&languageCode=1033&beta=null&isWHQL=1&dltype=-1&dch=1&sort1=0&numberOfResults=1"
-$downloadUrl = $driverInfo.IDS[0].downloadInfo.DownloadURL
+
+# ask for several results and take the first one that actually carries a download url, instead of
+# assuming result #1 exists - a single-result query returns nothing at all for some product ids
+foreach ($dch in @(1,0)) {
+$driverInfo = Get-NvJson "https://gfwsl.geforce.com/services_toolkit/services/com/nvidia/services/AjaxDriverService.php?func=DriverManualLookup&psid=$psid&pfid=$pfid&osID=$osID&languageCode=1033&beta=0&isWHQL=1&dltype=-1&dch=$dch&sort1=0&numberOfResults=10"
+if ($driverInfo -and $driverInfo.IDS) {
+$downloadUrl = ($driverInfo.IDS | ForEach-Object { $_.downloadInfo.DownloadURL } | Where-Object { $_ } | Select-Object -First 1)
+}
+if ($downloadUrl) { break }
+}
+}
+}
+
 if ($downloadUrl) {
+Write-Host "Pilote trouve : $downloadUrl`n"
 $candidateFile = "$env:SystemRoot\Temp\nvidia_driver_auto.exe"
+Remove-Item $candidateFile -Force -ErrorAction SilentlyContinue
+
 # real download progress via webclient events (Invoke-WebRequest's own bar is unusably slow in powershell 5.1)
+# retried up to 3 times - a truncated driver package is worse than no download at all
+$downloadOk = $false
+for ($try = 1; $try -le 3 -and -not $downloadOk; $try++) {
 $webClient = New-Object System.Net.WebClient
+$webClient.Headers.Add("User-Agent", $nvUserAgent)
 Register-ObjectEvent -InputObject $webClient -EventName DownloadProgressChanged -SourceIdentifier WinSuxDriverDownload.Progress | Out-Null
 Register-ObjectEvent -InputObject $webClient -EventName DownloadFileCompleted -SourceIdentifier WinSuxDriverDownload.Completed | Out-Null
 $webClient.DownloadFileAsync([Uri]$downloadUrl, $candidateFile)
 $downloadDone = $false
-$downloadOk = $false
 while (-not $downloadDone) {
 $progEvent = Wait-Event -SourceIdentifier WinSuxDriverDownload.Progress -Timeout 1
 if ($progEvent) {
 $percent = $progEvent.SourceEventArgs.ProgressPercentage
 $mbReceived = [math]::Round($progEvent.SourceEventArgs.BytesReceived / 1MB, 1)
 $mbTotal = [math]::Round($progEvent.SourceEventArgs.TotalBytesToReceive / 1MB, 1)
-Write-Progress -Id 2 -ParentId 1 -Activity "Telechargement du pilote NVIDIA" -Status "$mbReceived Mo / $mbTotal Mo ($percent%)" -PercentComplete $percent
+Write-Progress -Id 2 -ParentId 1 -Activity "Telechargement du pilote NVIDIA (essai $try/3)" -Status "$mbReceived Mo / $mbTotal Mo ($percent%)" -PercentComplete $percent
 Remove-Event -SourceIdentifier WinSuxDriverDownload.Progress
 }
 $compEvent = Wait-Event -SourceIdentifier WinSuxDriverDownload.Completed -Timeout 0
@@ -882,11 +1001,10 @@ Remove-Event -SourceIdentifier WinSuxDriverDownload.Completed
 Unregister-Event -SourceIdentifier WinSuxDriverDownload.Progress -ErrorAction SilentlyContinue
 Unregister-Event -SourceIdentifier WinSuxDriverDownload.Completed -ErrorAction SilentlyContinue
 $webClient.Dispose()
+if ($downloadOk -and (Test-Path $candidateFile) -and (Get-Item $candidateFile).Length -lt 100MB) { $downloadOk = $false }
+}
 Write-Progress -Id 2 -Activity "Telechargement du pilote NVIDIA" -Completed
-if ($downloadOk -and (Test-Path $candidateFile) -and (Get-Item $candidateFile).Length -gt 100MB) {
-$InstallFile = $candidateFile
-}
-}
+if ($downloadOk) { $InstallFile = $candidateFile }
 }
 } catch { $InstallFile = $null }
 
@@ -919,11 +1037,16 @@ if ($InstallFile -and (Test-Path $InstallFile)) {
 & "$env:SystemDrive\Program Files\7-Zip\7z.exe" x "$InstallFile" -o"$env:SystemRoot\Temp\nvidiadriver" -y | Out-Null
 
 # debloat nvidia driver
+# NvContainer / NvCpl / HDAudio / PhysX are deliberately KEPT now: removing NvContainer+NvCpl left the machine
+# with no nvidia control panel at all (no resolution / refresh rate / colour control), removing HDAudio killed
+# hdmi & displayport audio, and removing PhysX crashes older titles that ship against it
 $nvidiaDebloatItems = @(
-"Display.Nview","FrameViewSDK","HDAudio","MSVCRT","NvApp.MessageBus","NvBackend","NvContainer","NvCpl","NvDLISR","NVPCF","NvTelemetry","NvVAD","PhysX","PPC","ShadowPlay",
+"Display.Nview","FrameViewSDK","NvApp.MessageBus","NvBackend","NvDLISR","NvTelemetry","NvVAD","PPC","ShadowPlay",
 "NvApp\CEF","NvApp\osc","NvApp\Plugins","NvApp\UpgradeConsent","NvApp\www",
 "NvApp\7z.dll","NvApp\7z.exe","NvApp\DarkModeCheck.exe","NvApp\InstallerExtension.dll","NvApp\NvApp.nvi","NvApp\NvAppApi.dll","NvApp\NvAppExt.dll","NvApp\NvConfigGenerator.dll"
 )
+# NVPCF drives dynamic boost on laptops - only strip it on a desktop
+if (-not (Get-CimInstance Win32_Battery -ErrorAction SilentlyContinue)) { $nvidiaDebloatItems += "NVPCF" }
 $totalNvidiaItems = $nvidiaDebloatItems.Count
 $i = 0
 foreach ($item in $nvidiaDebloatItems) {
@@ -939,10 +1062,13 @@ Write-Progress -Id 2 -Activity "Allegement du pilote" -Completed
 # install nvidia driver
 Start-Process "$env:SystemRoot\Temp\nvidiadriver\setup.exe" -ArgumentList "-s -noreboot -noeula -clean" -Wait -NoNewWindow
 
-# install nvidia control panel
+# install nvidia control panel only if the driver did not already bring it in - winget itself may be gone,
+# so this is best-effort and no longer the only path to a working control panel
+if (-not (Get-AppxPackage -AllUsers "*NVIDIAControlPanel*" -ErrorAction SilentlyContinue)) {
 try {
-Start-Process "winget" -ArgumentList "install `"9NF8H0H7WMLT`" --silent --accept-package-agreements --accept-source-agreements --disable-interactivity --no-upgrade" -Wait -WindowStyle Hidden
+Start-Process "winget" -ArgumentList "install `"9NF8H0H7WMLT`" --silent --accept-package-agreements --accept-source-agreements --disable-interactivity --no-upgrade" -Wait -WindowStyle Hidden -ErrorAction SilentlyContinue
 } catch { }
+}
 
 # uninstall winget
 Get-AppxPackage -allusers *Microsoft.Winget.Source* | Remove-AppxPackage -ErrorAction SilentlyContinue
@@ -1032,13 +1158,13 @@ $nipfile = @'
       <ProfileSetting>
         <SettingNameInfo>GSYNC - Global Feature</SettingNameInfo>
         <SettingID>278196567</SettingID>
-        <SettingValue>0</SettingValue>
+        <SettingValue>1</SettingValue>
         <ValueType>Dword</ValueType>
       </ProfileSetting>
       <ProfileSetting>
         <SettingNameInfo>GSYNC - Global Mode</SettingNameInfo>
         <SettingID>278196727</SettingID>
-        <SettingValue>0</SettingValue>
+        <SettingValue>2</SettingValue>
         <ValueType>Dword</ValueType>
       </ProfileSetting>
       <ProfileSetting>
@@ -1191,12 +1317,6 @@ $nipfile = @'
         <SettingValue>0</SettingValue>
         <ValueType>Dword</ValueType>
       </ProfileSetting>
-      <ProfileSetting>
-        <SettingNameInfo>Preferred OpenGL GPU</SettingNameInfo>
-        <SettingID>550564838</SettingID>
-        <SettingValue>id,2.0:268410DE,00000100,GF - (400,2,161,24564) @ (0)</SettingValue>
-        <ValueType>String</ValueType>
-      </ProfileSetting>
     </Settings>
   </Profile>
 </ArrayOfProfile>
@@ -1226,7 +1346,7 @@ if ($currentLine -and $defaultLine -and $maxLine) {
 $currentLimit = [double]$currentLine.Matches[0].Groups[1].Value
 $defaultLimit = [double]$defaultLine.Matches[0].Groups[1].Value
 $maxLimit = [double]$maxLine.Matches[0].Groups[1].Value
-# light +10% boost above the manufacturer default, always capped by the card's own max power limit
+# light +15% boost above the manufacturer default, always capped by the card's own max power limit
 $boostTarget = [math]::Min($defaultLimit * 1.15, $maxLimit)
 if ($onAC -and $currentLimit -lt $boostTarget) {
 # progressive ramp in 4 steps instead of an instant jump
@@ -1341,8 +1461,9 @@ cmd /c "reg add `"HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\S
 cmd /c "reg add `"HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile\Tasks\Games`" /v `"Scheduling Category`" /t REG_SZ /d `"High`" /f >nul 2>&1"
 cmd /c "reg add `"HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile\Tasks\Games`" /v `"SFIO Priority`" /t REG_SZ /d `"High`" /f >nul 2>&1"
 
-# boost foreground app cpu scheduling priority over background apps
-cmd /c "reg add `"HKLM\SYSTEM\CurrentControlSet\Control\PriorityControl`" /v `"Win32PrioritySeparation`" /t REG_DWORD /d `"26`" /f >nul 2>&1"
+# boost foreground app cpu scheduling priority over background apps - 38 decimal = 0x26 (short quantum, variable, 3:1 foreground boost)
+# reg.exe reads /d as decimal: the old value "26" wrote 0x1A and silently contradicted the 0x26 set by reg.reg
+cmd /c "reg add `"HKLM\SYSTEM\CurrentControlSet\Control\PriorityControl`" /v `"Win32PrioritySeparation`" /t REG_DWORD /d `"38`" /f >nul 2>&1"
 
 # persistent foreground app process priority booster - whatever app has focus (the game) gets bumped to High
 try {
@@ -1412,6 +1533,95 @@ cmd /c "sc stop `"NDU`" >nul 2>&1"
 cmd /c "sc config `"NDU`" start= disabled >nul 2>&1"
 cmd /c "sc stop `"PcaSvc`" >nul 2>&1"
 cmd /c "sc config `"PcaSvc`" start= disabled >nul 2>&1"
+
+# ------------------------------------------------------------------
+# cpu - deeper scheduling / memory / interrupt tuning
+# ------------------------------------------------------------------
+
+# keep the kernel and drivers resident in ram instead of letting them be paged out (needs plenty of ram)
+cmd /c "reg add `"HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management`" /v `"DisablePagingExecutive`" /t REG_DWORD /d `"1`" /f >nul 2>&1"
+# workstation/gaming balance for the file cache - 0 favours process working sets over the system cache
+cmd /c "reg add `"HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management`" /v `"LargeSystemCache`" /t REG_DWORD /d `"0`" /f >nul 2>&1"
+# stop windows splitting every service into its own svchost process on machines with plenty of ram
+try {
+$ramKB = [int]((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory / 1KB)
+cmd /c "reg add `"HKLM\SYSTEM\CurrentControlSet\Control`" /v `"SvcHostSplitThresholdInKB`" /t REG_DWORD /d `"$ramKB`" /f >nul 2>&1"
+} catch { }
+
+# spread deferred procedure calls instead of serialising them
+cmd /c "reg add `"HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\kernel`" /v `"ThreadDpcEnable`" /t REG_DWORD /d `"0`" /f >nul 2>&1"
+
+# ntfs: stop updating a last-access timestamp on every single file read, give the mft room to grow,
+# and let ntfs use more memory for its own caches
+cmd /c "fsutil behavior set disablelastaccess 1 >nul 2>&1"
+cmd /c "fsutil behavior set memoryusage 2 >nul 2>&1"
+cmd /c "fsutil behavior set mftzone 2 >nul 2>&1"
+
+# processor power policy - hold the cpu at full performance and react to load instantly
+# PERFEPP 0        = energy/performance preference fully biased to performance (intel hwp / amd cppc)
+# PERFINCPOL 2     = "rocket" ramp up, PERFDECPOL 1 = single step down
+# PERFINCTHRESHOLD low + PERFDECTHRESHOLD low = raise frequency on the smallest load increase
+# LATENCYHINTPERF 99 = ignore the "latency insensitive" hint that parks performance during light load
+$procSub = "54533251-82be-4824-96c1-47b60b740d00"
+$procTweaks = @(
+@{Guid="36687f9e-e3a5-4dbf-b1dc-15eb381c6863"; Value=0},    # PERFEPP - energy performance preference
+@{Guid="45bcc044-d885-43e2-8605-ee0ec6e96b59"; Value=0},    # PERFEPP1 - class 1 cores
+@{Guid="465e1f50-b610-473a-ab58-00d1077dc418"; Value=2},    # PERFINCPOL - increase policy: rocket
+@{Guid="40fbefc7-2e9d-4d25-a185-0cfd8574bac6"; Value=1},    # PERFDECPOL - decrease policy: single
+@{Guid="06cadf0e-64ed-448a-8927-ce7bf90eb35d"; Value=10},   # PERFINCTHRESHOLD
+@{Guid="12a0ab44-fe28-4fa9-b3bd-4b64f44960a6"; Value=8},    # PERFDECTHRESHOLD
+@{Guid="984cf492-3bed-4488-a8f9-4286c97bf5aa"; Value=99},   # LATENCYHINTPERF
+@{Guid="0cc5b647-c1df-4637-891a-dec35c318583"; Value=100},  # CPMINCORES - no core parking
+@{Guid="ea062031-0e34-4ff1-9b6d-eb1059334028"; Value=100},  # CPMAXCORES
+@{Guid="be337238-0d82-4146-a960-4f3749d470c7"; Value=0}     # PERFBOOSTPOL - boost policy
+)
+foreach ($tweak in $procTweaks) {
+# unhide the setting first, several of these are hidden from powercfg.cpl by default
+cmd /c "reg add `"HKLM\System\ControlSet001\Control\Power\PowerSettings\$procSub\$($tweak.Guid)`" /v `"Attributes`" /t REG_DWORD /d `"0`" /f >nul 2>&1"
+cmd /c "powercfg /setacvalueindex 99999999-9999-9999-9999-999999999999 $procSub $($tweak.Guid) $($tweak.Value) >nul 2>&1"
+cmd /c "powercfg /setdcvalueindex 99999999-9999-9999-9999-999999999999 $procSub $($tweak.Guid) $($tweak.Value) >nul 2>&1"
+}
+
+# on a desktop (no battery) also stop the cpu entering idle c-states at all - removes wake-from-idle
+# latency spikes entirely. skipped on laptops, where it would wreck battery life and thermals
+if (-not (Get-CimInstance Win32_Battery -ErrorAction SilentlyContinue)) {
+cmd /c "reg add `"HKLM\System\ControlSet001\Control\Power\PowerSettings\$procSub\5d76a2ca-e8c0-402f-a133-2158492d58ad`" /v `"Attributes`" /t REG_DWORD /d `"0`" /f >nul 2>&1"
+cmd /c "powercfg /setacvalueindex 99999999-9999-9999-9999-999999999999 $procSub 5d76a2ca-e8c0-402f-a133-2158492d58ad 1 >nul 2>&1"
+}
+cmd /c "powercfg /setactive 99999999-9999-9999-9999-999999999999 >nul 2>&1"
+
+# ------------------------------------------------------------------
+# gpu - interrupt mode, dpc latency and display stability
+# ------------------------------------------------------------------
+
+# message signaled interrupts + high device priority on the gpu: fewer shared-irq stalls, lower dpc latency
+Get-ChildItem -Path "HKLM:\SYSTEM\ControlSet001\Enum\PCI" -ErrorAction SilentlyContinue |
+Where-Object { $_.PSChildName -match 'VEN_10DE' } | ForEach-Object {
+Get-ChildItem -Path $_.PSPath -ErrorAction SilentlyContinue | ForEach-Object {
+$devicePath = ($_.Name -replace 'HKEY_LOCAL_MACHINE', 'HKLM')
+cmd /c "reg add `"$devicePath\Device Parameters\Interrupt Management\MessageSignaledInterruptProperties`" /v `"MSISupported`" /t REG_DWORD /d `"1`" /f >nul 2>&1"
+cmd /c "reg add `"$devicePath\Device Parameters\Interrupt Management\Affinity Policy`" /v `"DevicePriority`" /t REG_DWORD /d `"3`" /f >nul 2>&1"
+}
+}
+
+# nvidia kernel driver: per-core dpc handling + keep the card in its maximum performance state
+$nvClass = "HKLM:\SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}"
+Get-ChildItem -Path $nvClass -ErrorAction SilentlyContinue | Where-Object { $_.PSChildName -match '^\d{4}$' } | ForEach-Object {
+$keyPath = ($_.Name -replace 'HKEY_LOCAL_MACHINE', 'HKLM')
+cmd /c "reg add `"$keyPath`" /v `"RmGpsPsEnablePerCpuCoreDpc`" /t REG_DWORD /d `"1`" /f >nul 2>&1"
+cmd /c "reg add `"$keyPath`" /v `"PerfLevelSrc`" /t REG_DWORD /d `"8738`" /f >nul 2>&1"
+cmd /c "reg add `"$keyPath`" /v `"PowerMizerEnable`" /t REG_DWORD /d `"1`" /f >nul 2>&1"
+cmd /c "reg add `"$keyPath`" /v `"PowerMizerLevel`" /t REG_DWORD /d `"1`" /f >nul 2>&1"
+cmd /c "reg add `"$keyPath`" /v `"PowerMizerLevelAC`" /t REG_DWORD /d `"1`" /f >nul 2>&1"
+}
+
+# disable multiplane overlay - the single most common cause of flickering, black flashes and stuttering
+# on nvidia + windows 11, especially with more than one monitor or mixed refresh rates
+cmd /c "reg add `"HKLM\SOFTWARE\Microsoft\Windows\Dwm`" /v `"OverlayTestMode`" /t REG_DWORD /d `"5`" /f >nul 2>&1"
+
+# make sure the multimedia scheduler never drops into its low-power lazy mode while a game has focus
+cmd /c "reg add `"HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile`" /v `"NoLazyMode`" /t REG_DWORD /d `"1`" /f >nul 2>&1"
+cmd /c "reg add `"HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile`" /v `"AlwaysOn`" /t REG_DWORD /d `"1`" /f >nul 2>&1"
 
 # disable storage sense - stops unpredictable background disk scans/cleanup that can interfere with the manual cleanup already done
 cmd /c "reg add `"HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\StorageSense\Parameters\StoragePolicy`" /v `"01`" /t REG_DWORD /d `"0`" /f >nul 2>&1"

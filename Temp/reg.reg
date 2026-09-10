@@ -298,7 +298,9 @@ Windows Registry Editor Version 5.00
 ; disable slide open combo boxes
 ; disable smooth-scroll list boxes
 [HKEY_CURRENT_USER\Control Panel\Desktop]
-"UserPreferencesMask"=hex(2):90,12,03,80,12,00,00,00
+; UserPreferencesMask is REG_BINARY. it was written as hex(2) (REG_EXPAND_SZ), so windows could not read
+; the mask at all - hence the inconsistent animation / menu / drag behaviour after running the pack.
+"UserPreferencesMask"=hex:90,12,03,80,10,00,00,00
 
 ; disable animate windows when minimizing and maximizing
 [HKEY_CURRENT_USER\Control Panel\Desktop\WindowMetrics]
@@ -974,13 +976,11 @@ Windows Registry Editor Version 5.00
 
 
 ; SYSTEM
-; 100% dpi scaling
-[HKEY_CURRENT_USER\Control Panel\Desktop]
-"LogPixels"=dword:00000060
-"Win8DpiScaling"=dword:00000001
-
-[HKEY_CURRENT_USER\SOFTWARE\Microsoft\Windows\DWM]
-"UseDpiScaling"=dword:00000000
+; dpi scaling is deliberately NOT forced here anymore.
+; the old block wrote LogPixels=96 + Win8DpiScaling=1, which pins the whole desktop to 100% scaling
+; regardless of the panel. on any high-dpi screen (1440p/4k laptop or monitor) that makes every ui
+; element unreadably small - one of the main "display problems" this pack used to cause.
+; windows already picks the recommended scaling for the detected panel; leave it alone.
 
 ; disable fix scaling for apps
 [HKEY_CURRENT_USER\Control Panel\Desktop]
@@ -990,9 +990,12 @@ Windows Registry Editor Version 5.00
 [HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\GraphicsDrivers]
 "HwSchMode"=dword:00000002
 
-; disable variable refresh rate & enable optimizations for windowed games
+; enable variable refresh rate & optimizations for windowed games
+; VRROptimizeEnable was 0, which switches off variable refresh rate for windowed/borderless games.
+; on a g-sync / freesync monitor that is exactly what produces tearing and micro-stutter on the desktop
+; and in borderless games, so it is on now - it is a no-op on a fixed-refresh monitor
 [HKEY_CURRENT_USER\Software\Microsoft\DirectX\UserGpuPreferences]
-"DirectXUserGlobalSettings"="SwapEffectUpgradeEnable=1;VRROptimizeEnable=0;"
+"DirectXUserGlobalSettings"="SwapEffectUpgradeEnable=1;VRROptimizeEnable=1;"
 
 ; disable notifications
 [HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\PushNotifications]
