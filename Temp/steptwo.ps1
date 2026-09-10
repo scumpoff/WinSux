@@ -1416,20 +1416,42 @@ $powerReport = & nvidia-smi -q -d POWER 2>$null
 $currentLine = $powerReport | Select-String "Current Power Limit\s*:\s*([\d.]+)"
 $defaultLine = $powerReport | Select-String "Default Power Limit\s*:\s*([\d.]+)"
 $maxLine = $powerReport | Select-String "Max Power Limit\s*:\s*([\d.]+)"
+
+# thermal guard. the boost is only worth having while the card is not already close to its own
+# throttling point - past that, a higher power limit buys nothing and just adds heat and fan noise
+$gpuTemp = 0
+$slowdownTemp = 0
+try { $gpuTemp = [int]((& nvidia-smi --query-gpu=temperature.gpu --format=csv,noheader,nounits 2>$null) | Select-Object -First 1) } catch { }
+try {
+$thermalReport = & nvidia-smi -q -d TEMPERATURE 2>$null
+$slowLine = $thermalReport | Select-String "GPU Slowdown Temp\s*:\s*(\d+)"
+if ($slowLine) { $slowdownTemp = [int]$slowLine.Matches[0].Groups[1].Value }
+} catch { }
+# stay 10 degrees below the card's own slowdown threshold, or 80 C if it could not be read
+$tempCeiling = if ($slowdownTemp -gt 0) { $slowdownTemp - 10 } else { 80 }
+
 if ($currentLine -and $defaultLine -and $maxLine) {
 $currentLimit = [double]$currentLine.Matches[0].Groups[1].Value
 $defaultLimit = [double]$defaultLine.Matches[0].Groups[1].Value
 $maxLimit = [double]$maxLine.Matches[0].Groups[1].Value
 # light +15% boost above the manufacturer default, always capped by the card's own max power limit
 $boostTarget = [math]::Min($defaultLimit * 1.15, $maxLimit)
-if ($onAC -and $currentLimit -lt $boostTarget) {
-# progressive ramp in 4 steps instead of an instant jump
+
+if ($gpuTemp -gt 0 -and $gpuTemp -ge $tempCeiling -and $currentLimit -gt $defaultLimit) {
+# running hot: step back down to the manufacturer default and stop there
+& nvidia-smi -pl ([math]::Floor($defaultLimit)) 2>$null | Out-Null
+} elseif ($onAC -and $currentLimit -lt $boostTarget -and ($gpuTemp -eq 0 -or $gpuTemp -lt $tempCeiling)) {
+# progressive ramp in 4 steps instead of an instant jump, re-checking temperature between steps
 $steps = 4
 $stepSize = ($boostTarget - $currentLimit) / $steps
 for ($s = 1; $s -le $steps; $s++) {
 $stepTarget = [math]::Floor($currentLimit + ($stepSize * $s))
 & nvidia-smi -pl $stepTarget 2>$null | Out-Null
 Start-Sleep -Seconds 3
+try {
+$t = [int]((& nvidia-smi --query-gpu=temperature.gpu --format=csv,noheader,nounits 2>$null) | Select-Object -First 1)
+if ($t -ge $tempCeiling) { & nvidia-smi -pl ([math]::Floor($defaultLimit)) 2>$null | Out-Null; break }
+} catch { }
 }
 } elseif (-not $onAC -and $currentLimit -gt $defaultLimit) {
 & nvidia-smi -pl ([math]::Floor($defaultLimit)) 2>$null | Out-Null
@@ -1554,20 +1576,41 @@ public class WinSuxForeground {
 [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
 }
 "@
-$excluded = @('explorer','SearchHost','TextInputHost','ShellExperienceHost','StartMenuExperienceHost')
+# never touch the shell, the compositor or the audio engine. audiodg already runs at High and starving
+# it is what produces crackling and dropouts; dwm losing time against a boosted process produces the
+# stutter this tweak is supposed to remove
+$excluded = @('explorer','SearchHost','TextInputHost','ShellExperienceHost','StartMenuExperienceHost',
+'dwm','audiodg','csrss','winlogon','services','lsass','svchost','SystemSettings','ApplicationFrameHost',
+'LockApp','sihost','fontdrvhost','conhost','WindowsTerminal','taskmgr')
+# remember what we changed so focus loss can put it back instead of leaving every app ever focused at High
+$boosted = @{}
 while ($true) {
 try {
 $hwnd = [WinSuxForeground]::GetForegroundWindow()
 $procId = 0
 [WinSuxForeground]::GetWindowThreadProcessId($hwnd, [ref]$procId) | Out-Null
+
+# restore anything that is no longer in the foreground
+foreach ($oldId in @($boosted.Keys)) {
+if ($oldId -ne $procId) {
+$old = Get-Process -Id $oldId -ErrorAction SilentlyContinue
+if ($old) { try { $old.PriorityClass = $boosted[$oldId] } catch { } }
+$boosted.Remove($oldId)
+}
+}
+
 if ($procId -gt 0) {
 $proc = Get-Process -Id $procId -ErrorAction SilentlyContinue
 if ($proc -and $proc.ProcessName -notin $excluded -and $proc.PriorityClass -ne 'High') {
-$proc.PriorityClass = 'High'
+$boosted[$procId] = $proc.PriorityClass
+# AboveNormal, not High: High competes with the audio engine and the compositor, which both sit
+# at High themselves. AboveNormal wins against every ordinary background process without that risk
+$proc.PriorityClass = 'AboveNormal'
 }
 }
 } catch { }
-Start-Sleep -Milliseconds 500
+# 2s instead of 500ms - the polling loop itself was waking the cpu 120 times a minute for nothing
+Start-Sleep -Seconds 2
 }
 '@
 Set-Content -Path $boosterScript -Value $boosterScriptContent -Force
@@ -1669,12 +1712,19 @@ cmd /c "powercfg /setacvalueindex 99999999-9999-9999-9999-999999999999 $procSub 
 cmd /c "powercfg /setdcvalueindex 99999999-9999-9999-9999-999999999999 $procSub $($tweak.Guid) $($tweak.Value) >nul 2>&1"
 }
 
-# on a desktop (no battery) also stop the cpu entering idle c-states at all - removes wake-from-idle
-# latency spikes entirely. skipped on laptops, where it would wreck battery life and thermals
-if (-not (Get-CimInstance Win32_Battery -ErrorAction SilentlyContinue)) {
-cmd /c "reg add `"HKLM\System\ControlSet001\Control\Power\PowerSettings\$procSub\5d76a2ca-e8c0-402f-a133-2158492d58ad`" /v `"Attributes`" /t REG_DWORD /d `"0`" /f >nul 2>&1"
-cmd /c "powercfg /setacvalueindex 99999999-9999-9999-9999-999999999999 $procSub 5d76a2ca-e8c0-402f-a133-2158492d58ad 1 >nul 2>&1"
-}
+# c-states are deliberately LEFT ON. disabling them (IDLEDISABLE) removes a few microseconds of
+# wake-from-idle latency but keeps every core electrically active at idle, which raises idle temperature
+# and package power permanently for no gain in frame times. the same reasoning applies to pinning the
+# minimum processor state at 100% - see PROCTHROTTLEMIN further down, set to 5% for that reason.
+# performance under load comes from EPP 0 + rocket ramp above, which react in microseconds anyway.
+# make sure a previous run of this pack has not left idle disabled
+cmd /c "powercfg /setacvalueindex 99999999-9999-9999-9999-999999999999 $procSub 5d76a2ca-e8c0-402f-a133-2158492d58ad 0 >nul 2>&1"
+cmd /c "powercfg /setdcvalueindex 99999999-9999-9999-9999-999999999999 $procSub 5d76a2ca-e8c0-402f-a133-2158492d58ad 0 >nul 2>&1"
+
+# idle promotion/demotion thresholds: enter deeper c-states quickly when genuinely idle, leave them
+# instantly under load. keeps temperatures down without adding latency where it matters
+cmd /c "powercfg /setacvalueindex 99999999-9999-9999-9999-999999999999 $procSub 7b224883-b3cc-4d79-819f-8374152cbe7c 100 >nul 2>&1"
+cmd /c "powercfg /setacvalueindex 99999999-9999-9999-9999-999999999999 $procSub 4b92d758-5a24-4851-a470-815d78aee119 20 >nul 2>&1"
 cmd /c "powercfg /setactive 99999999-9999-9999-9999-999999999999 >nul 2>&1"
 
 # ------------------------------------------------------------------
@@ -1691,15 +1741,19 @@ cmd /c "reg add `"$devicePath\Device Parameters\Interrupt Management\Affinity Po
 }
 }
 
-# nvidia kernel driver: per-core dpc handling + keep the card in its maximum performance state
+# nvidia kernel driver: per-core dpc handling only.
+# PerfLevelSrc=0x2222 and PowerMizerLevel=1 (previously set here) force the card into its maximum
+# p-state permanently, including on an idle desktop - that is 20-30W and 10-15 degrees of idle heat for
+# no benefit. the "prefer maximum performance" setting in the Inspector profile already holds the clocks
+# up while a 3D application is actually running, which is where it matters.
+# clear the forced values in case an earlier run of this pack wrote them
 $nvClass = "HKLM:\SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}"
 Get-ChildItem -Path $nvClass -ErrorAction SilentlyContinue | Where-Object { $_.PSChildName -match '^\d{4}$' } | ForEach-Object {
 $keyPath = ($_.Name -replace 'HKEY_LOCAL_MACHINE', 'HKLM')
 cmd /c "reg add `"$keyPath`" /v `"RmGpsPsEnablePerCpuCoreDpc`" /t REG_DWORD /d `"1`" /f >nul 2>&1"
-cmd /c "reg add `"$keyPath`" /v `"PerfLevelSrc`" /t REG_DWORD /d `"8738`" /f >nul 2>&1"
-cmd /c "reg add `"$keyPath`" /v `"PowerMizerEnable`" /t REG_DWORD /d `"1`" /f >nul 2>&1"
-cmd /c "reg add `"$keyPath`" /v `"PowerMizerLevel`" /t REG_DWORD /d `"1`" /f >nul 2>&1"
-cmd /c "reg add `"$keyPath`" /v `"PowerMizerLevelAC`" /t REG_DWORD /d `"1`" /f >nul 2>&1"
+cmd /c "reg delete `"$keyPath`" /v `"PerfLevelSrc`" /f >nul 2>&1"
+cmd /c "reg delete `"$keyPath`" /v `"PowerMizerLevel`" /f >nul 2>&1"
+cmd /c "reg delete `"$keyPath`" /v `"PowerMizerLevelAC`" /f >nul 2>&1"
 }
 
 # disable multiplane overlay - the single most common cause of flickering, black flashes and stuttering
@@ -1869,9 +1923,13 @@ powercfg /setacvalueindex 99999999-9999-9999-9999-999999999999 501a4d13-42af-442
 powercfg /setdcvalueindex 99999999-9999-9999-9999-999999999999 501a4d13-42af-4429-9fd1-a8218c268e20 ee12f906-d277-404b-b6da-e5fa1a576df5 000 2>$null
 
 # processor power management
-# minimum processor state 100%
-powercfg /setacvalueindex 99999999-9999-9999-9999-999999999999 54533251-82be-4824-96c1-47b60b740d00 893dee8e-2bef-41e0-89c6-b55d0929964c 0x00000064 2>$null
-powercfg /setdcvalueindex 99999999-9999-9999-9999-999999999999 54533251-82be-4824-96c1-47b60b740d00 893dee8e-2bef-41e0-89c6-b55d0929964c 0x00000064 2>$null
+# minimum processor state 5% - deliberately NOT 100%.
+# forcing 100% pins every core at its maximum multiplier permanently, including on an idle desktop:
+# 15-25 degrees of extra idle temperature, and on modern cpus it actively COSTS performance, because a
+# hotter package reaches its thermal/power limit sooner and boosts less far under real load.
+# with EPP 0 and the rocket ramp policy set earlier, the cpu still reaches full clocks in microseconds.
+powercfg /setacvalueindex 99999999-9999-9999-9999-999999999999 54533251-82be-4824-96c1-47b60b740d00 893dee8e-2bef-41e0-89c6-b55d0929964c 0x00000005 2>$null
+powercfg /setdcvalueindex 99999999-9999-9999-9999-999999999999 54533251-82be-4824-96c1-47b60b740d00 893dee8e-2bef-41e0-89c6-b55d0929964c 0x00000005 2>$null
 
 # system cooling policy active
 powercfg /setacvalueindex 99999999-9999-9999-9999-999999999999 54533251-82be-4824-96c1-47b60b740d00 94d3a615-a899-4ac5-ae2b-e4d8f634367f 001 2>$null
@@ -2097,11 +2155,101 @@ cmd /c "reg delete `"HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\SystemRes
 } catch { }
 
         Clear-Host
-        Write-Progress -Id 1 -Activity "Optimisation en cours" -Status "Termine" -PercentComplete 100
+        Write-Progress -Id 1 -Activity "Optimisation en cours" -Status "Verification" -PercentComplete 100
         Write-Progress -Id 1 -Activity "Optimisation en cours" -Completed
-        Write-Host "Toutes les optimisations ont ete appliquees avec succes`n"
-        Write-Host "Redemarrage`n"
 
-# restart
-Start-Sleep -Seconds 8
+# ------------------------------------------------------------------
+# validation report - checks what actually landed, not what was attempted
+# ------------------------------------------------------------------
+# every step above suppresses its own errors so the run never stops halfway. that means a step can fail
+# in complete silence, which is how the timer resolution service ended up compiled but never registered.
+# this re-reads the real system state and prints one line per check, then writes the same thing to a log
+$checks = @()
+function Add-Check([string]$label, [scriptblock]$test, [string]$detail = "") {
+$ok = $false
+try { $ok = [bool](& $test) } catch { $ok = $false }
+$script:checks += [PSCustomObject]@{ Label = $label; Ok = $ok; Detail = $detail }
+}
+
+Add-Check "Pilote GPU NVIDIA installe" { (Get-CimInstance Win32_VideoController | Where-Object { $_.Name -like '*NVIDIA*' -and $_.DriverVersion }) -ne $null }
+Add-Check "Panneau de configuration NVIDIA" { (Get-AppxPackage -AllUsers '*NVIDIAControlPanel*') -or (Test-Path "$env:ProgramFiles\NVIDIA Corporation\Control Panel Client") }
+Add-Check "Service resolution du minuteur demarre" { (Get-Service -Name 'Set Timer Resolution Service' -ErrorAction SilentlyContinue).Status -eq 'Running' }
+Add-Check "Microsoft Edge supprime" { -not (Test-Path "${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe") -and -not (Test-Path "$env:ProgramFiles\Microsoft\Edge\Application\msedge.exe") }
+Add-Check "Plan Ultimate Performance actif" { (powercfg /getactivescheme) -match '99999999-9999-9999-9999-999999999999' }
+Add-Check "HAGS (planification GPU materielle)" { (Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\GraphicsDrivers' -Name HwSchMode -ErrorAction SilentlyContinue).HwSchMode -eq 2 }
+Add-Check "MPO desactive (anti-scintillement)" { (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\Dwm' -Name OverlayTestMode -ErrorAction SilentlyContinue).OverlayTestMode -eq 5 }
+Add-Check "Priorite premier plan (0x26)" { (Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\PriorityControl' -Name Win32PrioritySeparation -ErrorAction SilentlyContinue).Win32PrioritySeparation -eq 38 }
+Add-Check "DPI non force (mise a l'echelle auto)" { -not (Get-ItemProperty 'HKCU:\Control Panel\Desktop' -Name LogPixels -ErrorAction SilentlyContinue) }
+Add-Check "UserPreferencesMask en REG_BINARY" { (Get-Item 'HKCU:\Control Panel\Desktop').GetValueKind('UserPreferencesMask') -eq 'Binary' }
+Add-Check "VRR / G-Sync actif" { (Get-ItemProperty 'HKCU:\Software\Microsoft\DirectX\UserGpuPreferences' -Name DirectXUserGlobalSettings -ErrorAction SilentlyContinue).DirectXUserGlobalSettings -match 'VRROptimizeEnable=1' }
+# counts the frameworks actually present instead of using `return` inside ForEach-Object: `return` there
+# only ends that one iteration and still emits into the pipeline, so the scriptblock returned an array
+# whose [bool] cast is always true - the check could never fail
+Add-Check "Frameworks UWP intacts" {
+$needed = @('Microsoft.VCLibs.140.00','Microsoft.NET.Native.Framework','Microsoft.UI.Xaml','Microsoft.WindowsAppRuntime')
+$installed = Get-AppxPackage -AllUsers -ErrorAction SilentlyContinue
+$found = @($needed | Where-Object { $n = $_; $installed | Where-Object { $_.Name -like "$n*" } })
+$found.Count -eq $needed.Count
+}
+Add-Check "Microsoft Store fonctionnel" { (Get-AppxPackage -AllUsers '*WindowsStore*') -ne $null }
+Add-Check "Lecture video (MediaPlayback)" { (Get-WindowsOptionalFeature -Online -FeatureName MediaPlayback -ErrorAction SilentlyContinue).State -eq 'Enabled' }
+Add-Check "Impression disponible" { (Get-WindowsOptionalFeature -Online -FeatureName Printing-Foundation-Features -ErrorAction SilentlyContinue).State -eq 'Enabled' }
+Add-Check "Pack de langue systeme present" { $l = (Get-WinSystemLocale).Name; (Get-WindowsCapability -Online -ErrorAction SilentlyContinue | Where-Object { $_.Name -like "Language.Basic~~~$l*" -and $_.State -eq 'Installed' }) -ne $null }
+# power settings are read straight from the registry, not parsed out of powercfg /query. the query
+# output is fully localised ("Index actuel du parametre de courant alternatif" on a french system), so
+# any regex over it silently returns false on every non-english machine - and a hidden setting is not
+# printed at all, which would make a "-not match" test pass no matter what the value actually is.
+# a missing key means the setting is at its windows default, which is the healthy value in both cases
+function Get-PowerAC([string]$subGuid, [string]$settingGuid, $default) {
+$p = "HKLM:\SYSTEM\CurrentControlSet\Control\Power\User\PowerSchemes\99999999-9999-9999-9999-999999999999\$subGuid\$settingGuid"
+if (-not (Test-Path $p)) { return $default }
+$v = (Get-ItemProperty $p -Name ACSettingIndex -ErrorAction SilentlyContinue).ACSettingIndex
+if ($null -eq $v) { return $default } else { return [int]$v }
+}
+Add-Check "Etat processeur minimum <= 10% (idle sain)" { (Get-PowerAC '54533251-82be-4824-96c1-47b60b740d00' '893dee8e-2bef-41e0-89c6-b55d0929964c' 5) -le 10 }
+Add-Check "Etat processeur maximum = 100%" { (Get-PowerAC '54533251-82be-4824-96c1-47b60b740d00' 'bc5038f7-23e0-4960-96da-33abaf5935ec' 100) -eq 100 }
+Add-Check "Veille processeur (C-states) active" { (Get-PowerAC '54533251-82be-4824-96c1-47b60b740d00' '5d76a2ca-e8c0-402f-a133-2158492d58ad' 0) -eq 0 }
+Add-Check "Core parking desactive" { (Get-PowerAC '54533251-82be-4824-96c1-47b60b740d00' '0cc5b647-c1df-4637-891a-dec35c318583' 100) -eq 100 }
+Add-Check "Tache GPU Boost enregistree" { (Get-ScheduledTask -TaskName 'GPU Boost' -ErrorAction SilentlyContinue) -ne $null }
+Add-Check "Tache Foreground App Boost active" { (Get-ScheduledTask -TaskName 'Foreground App Boost' -ErrorAction SilentlyContinue) -ne $null }
+Add-Check "SysMain / DiagTrack desactives" { ((Get-Service SysMain -ErrorAction SilentlyContinue).StartType -eq 'Disabled') -and ((Get-Service DiagTrack -ErrorAction SilentlyContinue).StartType -eq 'Disabled') }
+Add-Check "Reseau: Nagle desactive" { (Get-ChildItem 'HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\Interfaces' | ForEach-Object { (Get-ItemProperty $_.PSPath -Name TCPNoDelay -ErrorAction SilentlyContinue).TCPNoDelay }) -contains 1 }
+
+$passed = @($checks | Where-Object { $_.Ok }).Count
+$total = $checks.Count
+
+Write-Host "========================================"
+Write-Host "   RAPPORT DE VERIFICATION  $passed/$total"
+Write-Host "========================================`n"
+foreach ($c in $checks) {
+if ($c.Ok) {
+Write-Host ("  [ OK   ] " + $c.Label) -ForegroundColor Green
+} else {
+Write-Host ("  [ECHEC ] " + $c.Label) -ForegroundColor Red
+}
+}
+Write-Host ""
+if ($passed -lt $total) {
+Write-Host "  $($total - $passed) verification(s) en echec - voir le journal ci-dessous`n" -ForegroundColor Yellow
+} else {
+Write-Host "  Toutes les verifications sont passees`n" -ForegroundColor Green
+}
+
+# write the same report next to the persistent scripts, where the disk cleanup cannot reach it
+$logDir = "$env:ProgramData\Optimisation"
+New-Item -Path $logDir -ItemType Directory -Force -ErrorAction SilentlyContinue | Out-Null
+$logFile = "$logDir\rapport.txt"
+$log = @()
+$log += "WinSux - rapport de verification"
+$log += (Get-Date).ToString('yyyy-MM-dd HH:mm:ss')
+$log += "resultat : $passed/$total"
+$log += ""
+foreach ($c in $checks) { $log += ("{0,-8} {1}" -f $(if ($c.Ok) { "[OK]" } else { "[ECHEC]" }), $c.Label) }
+$log | Set-Content -Path $logFile -Force -Encoding UTF8
+Write-Host "  Journal : $logFile`n"
+
+        Write-Host "Redemarrage dans 20 secondes`n"
+
+# restart - long enough to actually read the report before the machine goes down
+Start-Sleep -Seconds 20
 shutdown -r -t 00

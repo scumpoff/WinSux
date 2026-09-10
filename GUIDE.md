@@ -67,7 +67,21 @@ Le script :
 - **passe de réparation** : si une ancienne version du pack a déjà tourné sur la machine, le script réactive `MediaPlayback`, l'impression, `Language.Basic`, la base DirectX, réenregistre les paquets UWP cassés et nettoie le DPI forcé à 100 %
 - plan d'alimentation Ultimate Performance, résolution du minuteur système
 - nettoyage disque + point de restauration
-- **redémarrage final automatique**
+- **rapport de vérification** : 24 contrôles relus depuis l'état réel du système, affichés OK/ÉCHEC et enregistrés dans `C:\ProgramData\Optimisation\rapport.txt`
+- **redémarrage final automatique** (20 s, le temps de lire le rapport)
+
+## Politique thermique
+Le pack cherche la performance **sous charge**, pas des fréquences bloquées au maximum en permanence :
+- **C-states laissés actifs** et **état minimal du processeur à 5 %** — les épingler à 100 % ajoute 15-25 °C au repos et fait *perdre* des performances, un package plus chaud atteignant sa limite thermique plus tôt et boostant moins loin.
+- La réactivité vient de `EPP=0` + montée en fréquence « rocket », qui répondent en microsecondes.
+- Le **boost de limite de puissance GPU (+15 %)** est surveillé : il redescend automatiquement au défaut constructeur si la carte s'approche à moins de 10 °C de son seuil de throttling.
+- Le GPU n'est **plus forcé** dans son P-state maximum au repos (économie de 20-30 W et 10-15 °C sur un bureau inactif).
+
+## Gains réalistes
+Les tweaks OS/registre donnent typiquement **1 à 4 %** en jeu. Les vrais leviers restent dans le BIOS et ne peuvent pas être automatisés par un script :
+- **XMP / EXPO** sur la mémoire — souvent le plus gros gain isolé (5-15 % selon les jeux)
+- **Resizable BAR / Above 4G Decoding**
+- Refroidissement : une courbe de ventilation correcte vaut plus que n'importe quelle clé de registre
 
 ### 5. Terminé
 Après le dernier redémarrage, le PC est prêt.
