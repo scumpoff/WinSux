@@ -74,10 +74,10 @@ $totalApps = $appsToRemove.Count
 $i = 0
 foreach ($app in $appsToRemove) {
 $i++
-if ($totalApps -gt 0) { Write-Progress -Activity "Suppression des applications UWP" -Status "$($app.Name) ($i/$totalApps)" -PercentComplete (($i / $totalApps) * 100) }
+if ($totalApps -gt 0) { Write-Progress -Id 2 -ParentId 1 -Activity "Suppression des applications UWP" -Status "$($app.Name) ($i/$totalApps)" -PercentComplete (($i / $totalApps) * 100) }
 $app | Remove-AppxPackage -ErrorAction SilentlyContinue
 }
-Write-Progress -Activity "Suppression des applications UWP" -Completed
+Write-Progress -Id 2 -Activity "Suppression des applications UWP" -Completed
 
         Write-Progress -Id 1 -Activity "Optimisation en cours" -Status "Suppression des fonctionnalites UWP" -PercentComplete 13
         Write-Host "Suppression des fonctionnalites UWP`n"
@@ -104,12 +104,12 @@ $totalCaps = $capsToRemove.Count
 $i = 0
 foreach ($cap in $capsToRemove) {
 $i++
-if ($totalCaps -gt 0) { Write-Progress -Activity "Suppression des fonctionnalites UWP" -Status "$($cap.Name) ($i/$totalCaps)" -PercentComplete (($i / $totalCaps) * 100) }
+if ($totalCaps -gt 0) { Write-Progress -Id 2 -ParentId 1 -Activity "Suppression des fonctionnalites UWP" -Status "$($cap.Name) ($i/$totalCaps)" -PercentComplete (($i / $totalCaps) * 100) }
 try {
 Remove-WindowsCapability -Online -Name $cap.Name | Out-Null
 } catch { }
 }
-Write-Progress -Activity "Suppression des fonctionnalites UWP" -Completed
+Write-Progress -Id 2 -Activity "Suppression des fonctionnalites UWP" -Completed
 
         Write-Progress -Id 1 -Activity "Optimisation en cours" -Status "Suppression des fonctionnalites heritees" -PercentComplete 19
         Write-Host "Suppression des fonctionnalites heritees`n"
@@ -146,12 +146,12 @@ $totalFeatures = $featuresToDisable.Count
 $i = 0
 foreach ($feature in $featuresToDisable) {
 $i++
-if ($totalFeatures -gt 0) { Write-Progress -Activity "Suppression des fonctionnalites heritees" -Status "$($feature.FeatureName) ($i/$totalFeatures)" -PercentComplete (($i / $totalFeatures) * 100) }
+if ($totalFeatures -gt 0) { Write-Progress -Id 2 -ParentId 1 -Activity "Suppression des fonctionnalites heritees" -Status "$($feature.FeatureName) ($i/$totalFeatures)" -PercentComplete (($i / $totalFeatures) * 100) }
 try {
 Disable-WindowsOptionalFeature -Online -FeatureName $feature.FeatureName -NoRestart -WarningAction SilentlyContinue | Out-Null
 } catch { }
 }
-Write-Progress -Activity "Suppression des fonctionnalites heritees" -Completed
+Write-Progress -Id 2 -Activity "Suppression des fonctionnalites heritees" -Completed
 
 		Write-Progress -Id 1 -Activity "Optimisation en cours" -Status "Suppression des applications heritees" -PercentComplete 25
 		Write-Host "Suppression des applications heritees`n"
@@ -898,10 +898,10 @@ $totalNvidiaItems = $nvidiaDebloatItems.Count
 $i = 0
 foreach ($item in $nvidiaDebloatItems) {
 $i++
-Write-Progress -Activity "Allegement du pilote" -Status "$item ($i/$totalNvidiaItems)" -PercentComplete (($i / $totalNvidiaItems) * 100)
+Write-Progress -Id 2 -ParentId 1 -Activity "Allegement du pilote" -Status "$item ($i/$totalNvidiaItems)" -PercentComplete (($i / $totalNvidiaItems) * 100)
 Remove-Item "$env:SystemRoot\Temp\nvidiadriver\$item" -Recurse -Force -ErrorAction SilentlyContinue | Out-Null
 }
-Write-Progress -Activity "Allegement du pilote" -Completed
+Write-Progress -Id 2 -Activity "Allegement du pilote" -Completed
 
         Write-Progress -Id 1 -Activity "Optimisation en cours" -Status "Installation du pilote" -PercentComplete 56
         Write-Host "Installation du pilote`n"
