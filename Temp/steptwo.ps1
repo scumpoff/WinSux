@@ -1441,7 +1441,31 @@ cmd /c "reg add `"$keyPath`" /v `"RmGpsPsEnablePerCpuCoreDpc`" /t REG_DWORD /d `
 cmd /c "reg delete `"$keyPath`" /v `"PerfLevelSrc`" /f >nul 2>&1"
 cmd /c "reg delete `"$keyPath`" /v `"PowerMizerLevel`" /f >nul 2>&1"
 cmd /c "reg delete `"$keyPath`" /v `"PowerMizerLevelAC`" /f >nul 2>&1"
+
+# keep MSI-X enabled on the next driver reload. the driver writes this itself, but a reinstall or a
+# windows update has been known to flip it back, which silently drops the card to line-based interrupts
+cmd /c "reg add `"$keyPath`" /v `"RMIntrDisableMsixOnNextReload`" /t REG_DWORD /d `"0`" /f >nul 2>&1"
+
+# pcie link power-state transition latencies. these three are widely used by latency tuners and are
+# harmless, but they are NOT documented by nvidia and none of the published measurements are convincing -
+# treat them as unproven rather than as a known win
+cmd /c "reg add `"$keyPath`" /v `"D3PCLatency`" /t REG_DWORD /d `"1`" /f >nul 2>&1"
+cmd /c "reg add `"$keyPath`" /v `"F1TransitionLatency`" /t REG_DWORD /d `"1`" /f >nul 2>&1"
+cmd /c "reg add `"$keyPath`" /v `"LOWLATENCY`" /t REG_DWORD /d `"1`" /f >nul 2>&1"
 }
+
+# driver-level display dimming off - the driver can lower panel power on its own, independently of the
+# windows power plan, which shows up as brightness drift on some laptop panels and OLED monitors
+cmd /c "reg add `"HKLM\SOFTWARE\NVIDIA Corporation\Global\NVTweak`" /v `"DisplayPowerSaving`" /t REG_DWORD /d `"0`" /f >nul 2>&1"
+cmd /c "reg add `"HKLM\SYSTEM\CurrentControlSet\Services\nvlddmkm\Parameters\Global\NVTweak`" /v `"DisplayPowerSaving`" /t REG_DWORD /d `"0`" /f >nul 2>&1"
+
+# miracast support in the graphics stack - the key is present and set to 1 by default. nothing here
+# casts to a wireless display, and it keeps a code path warm in the display driver for no reason
+cmd /c "reg add `"HKLM\SYSTEM\CurrentControlSet\Control\GraphicsDrivers`" /v `"PlatformSupportMiracast`" /t REG_DWORD /d `"0`" /f >nul 2>&1"
+
+# map gpu memory contiguously through the iommu instead of scattered pages - fewer translation lookups
+# on the dma path. safe, and only meaningful on a system with the iommu active
+cmd /c "reg add `"HKLM\SYSTEM\CurrentControlSet\Control\GraphicsDrivers`" /v `"DpiMapIommuContiguous`" /t REG_DWORD /d `"1`" /f >nul 2>&1"
 
 # disable multiplane overlay - the single most common cause of flickering, black flashes and stuttering
 # on nvidia + windows 11, especially with more than one monitor or mixed refresh rates
