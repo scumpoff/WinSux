@@ -1274,6 +1274,29 @@ Set-Content -Path "$env:SystemRoot\Temp\inspector.nip" -Value $nipfile -Force
 # import nip
 Start-Process -wait "$env:SystemRoot\Temp\inspector.exe" -ArgumentList "-silentImport -silent $env:SystemRoot\Temp\inspector.nip"
 
+# apply a light power limit boost adapted to the gpu (raises to the manufacturer's own default, never the extreme max, no clock/voltage overclock)
+try {
+$powerReport = & nvidia-smi -q -d POWER 2>$null
+$currentLine = $powerReport | Select-String "Current Power Limit\s*:\s*([\d.]+)"
+$defaultLine = $powerReport | Select-String "Default Power Limit\s*:\s*([\d.]+)"
+if ($currentLine -and $defaultLine) {
+$currentLimit = [double]$currentLine.Matches[0].Groups[1].Value
+$defaultLimit = [double]$defaultLine.Matches[0].Groups[1].Value
+if ($currentLimit -lt $defaultLimit) {
+$targetLimit = [math]::Floor($defaultLimit)
+& nvidia-smi -pl $targetLimit 2>$null | Out-Null
+
+# persist the boost at each logon since nvidia-smi power limits reset
+$gpuBoostScript = "$env:SystemRoot\Temp\gpuboost.cmd"
+Set-Content -Path $gpuBoostScript -Value "nvidia-smi -pl $targetLimit" -Force
+$gpuBoostAction = New-ScheduledTaskAction -Execute $gpuBoostScript
+$gpuBoostTrigger = New-ScheduledTaskTrigger -AtLogOn
+$gpuBoostPrincipal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -RunLevel Highest
+Register-ScheduledTask -TaskName "GPU Boost" -Action $gpuBoostAction -Trigger $gpuBoostTrigger -Principal $gpuBoostPrincipal -Force -ErrorAction SilentlyContinue | Out-Null
+}
+}
+} catch { }
+
         break MainLoop
 
           }
