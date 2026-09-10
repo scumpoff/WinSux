@@ -1770,6 +1770,50 @@ cmd /c "bcdedit /set disabledynamictick yes >nul 2>&1"
 cmd /c "bcdedit /set tscsyncpolicy Enhanced >nul 2>&1"
 cmd /c "bcdedit /set useplatformclock false >nul 2>&1"
 
+        Write-Host "Peripheriques et audio`n"
+
+# disable mouse pointer acceleration (raw input, no smoothing)
+cmd /c "reg add `"HKCU\Control Panel\Mouse`" /v `"MouseSpeed`" /t REG_SZ /d `"0`" /f >nul 2>&1"
+cmd /c "reg add `"HKCU\Control Panel\Mouse`" /v `"MouseThreshold1`" /t REG_SZ /d `"0`" /f >nul 2>&1"
+cmd /c "reg add `"HKCU\Control Panel\Mouse`" /v `"MouseThreshold2`" /t REG_SZ /d `"0`" /f >nul 2>&1"
+
+# disable audio enhancements on all playback devices (reduces audio processing latency)
+$audioRenderPath = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\MMDevices\Audio\Render"
+Get-ChildItem -Path $audioRenderPath -ErrorAction SilentlyContinue | ForEach-Object {
+$regPath = $_.Name -replace 'HKEY_LOCAL_MACHINE', 'HKLM'
+cmd /c "reg add `"$regPath\FxProperties`" /v `"{1da5d803-d492-4edd-8c23-e0c0ffee7f0e},5`" /t REG_DWORD /d `"1`" /f >nul 2>&1"
+}
+
+# reduce visual effects overhead (keep font smoothing, disable animations/transparency/shadows)
+cmd /c "reg add `"HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects`" /v `"VisualFXSetting`" /t REG_DWORD /d `"3`" /f >nul 2>&1"
+cmd /c "reg add `"HKCU\Control Panel\Desktop\WindowMetrics`" /v `"MinAnimate`" /t REG_SZ /d `"0`" /f >nul 2>&1"
+cmd /c "reg add `"HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced`" /v `"TaskbarAnimations`" /t REG_DWORD /d `"0`" /f >nul 2>&1"
+cmd /c "reg add `"HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced`" /v `"ListviewAlphaSelect`" /t REG_DWORD /d `"0`" /f >nul 2>&1"
+cmd /c "reg add `"HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced`" /v `"ListviewShadow`" /t REG_DWORD /d `"0`" /f >nul 2>&1"
+cmd /c "reg add `"HKCU\Software\Microsoft\Windows\DWM`" /v `"EnableAeroPeek`" /t REG_DWORD /d `"0`" /f >nul 2>&1"
+cmd /c "reg add `"HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize`" /v `"EnableTransparency`" /t REG_DWORD /d `"0`" /f >nul 2>&1"
+
+# ensure ssd trim is enabled
+cmd /c "fsutil behavior set disabledeletenotify 0 >nul 2>&1"
+
+# set pagefile to a static size to avoid resize stutters (8gb for 16gb+ ram systems, ram size otherwise)
+try {
+$ramMB = [math]::Round((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory / 1MB)
+if ($ramMB -ge 16384) { $pagefileSize = 8192 } else { $pagefileSize = [math]::Max(4096, $ramMB) }
+$cs = Get-CimInstance Win32_ComputerSystem
+Set-CimInstance -InputObject $cs -Property @{AutomaticManagedPagefile=$false} -ErrorAction Stop
+$pfSetting = Get-CimInstance -Class Win32_PageFileSetting -Filter "Name='C:\\pagefile.sys'"
+if ($pfSetting) {
+Set-CimInstance -InputObject $pfSetting -Property @{InitialSize=$pagefileSize; MaximumSize=$pagefileSize} -ErrorAction Stop
+} else {
+New-CimInstance -ClassName Win32_PageFileSetting -Property @{Name="C:\pagefile.sys"; InitialSize=$pagefileSize; MaximumSize=$pagefileSize} -ErrorAction Stop | Out-Null
+}
+} catch { }
+
+# disable telemetry service (diagtrack)
+cmd /c "sc stop `"DiagTrack`" >nul 2>&1"
+cmd /c "sc config `"DiagTrack`" start= disabled >nul 2>&1"
+
         Write-Host "Mode d'alimentation`n"
         ## powercfg.cpl
 
