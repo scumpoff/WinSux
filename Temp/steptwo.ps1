@@ -1311,7 +1311,7 @@ $currentLimit = [double]$currentLine.Matches[0].Groups[1].Value
 $defaultLimit = [double]$defaultLine.Matches[0].Groups[1].Value
 $maxLimit = [double]$maxLine.Matches[0].Groups[1].Value
 # light +10% boost above the manufacturer default, always capped by the card's own max power limit
-$boostTarget = [math]::Min($defaultLimit * 1.1, $maxLimit)
+$boostTarget = [math]::Min($defaultLimit * 1.15, $maxLimit)
 if ($onAC -and $currentLimit -lt $boostTarget) {
 # progressive ramp in 4 steps instead of an instant jump
 $steps = 4
@@ -1451,9 +1451,20 @@ cmd /c "netsh interface 6to4 set state disabled >nul 2>&1"
 cmd /c "netsh interface isatap set state disabled >nul 2>&1"
 
 # lower nic interrupt moderation for less per-packet latency, where the driver exposes it (silently skipped otherwise)
+# uses RegistryKeyword (language-independent) instead of DisplayName, which is localized and silently fails to match on non-English Windows
 Get-NetAdapter -Physical -ErrorAction SilentlyContinue | ForEach-Object {
-try { Set-NetAdapterAdvancedProperty -Name $_.Name -DisplayName "Interrupt Moderation" -DisplayValue "Disabled" -ErrorAction Stop } catch { }
+try { Set-NetAdapterAdvancedProperty -Name $_.Name -RegistryKeyword "*InterruptModeration" -RegistryValue 0 -ErrorAction Stop } catch { }
 try { Set-NetAdapterAdvancedProperty -Name $_.Name -DisplayName "Interrupt Moderation Rate" -DisplayValue "Off" -ErrorAction Stop } catch { }
+
+# raise receive/transmit buffers where the driver exposes them - fewer dropped packets under load
+try {
+$rxProp = Get-NetAdapterAdvancedProperty -Name $_.Name -RegistryKeyword "*ReceiveBuffers" -AllProperties -ErrorAction Stop
+if ($rxProp.NumericParameterMaxValue) { Set-NetAdapterAdvancedProperty -Name $_.Name -RegistryKeyword "*ReceiveBuffers" -RegistryValue $rxProp.NumericParameterMaxValue -ErrorAction Stop }
+} catch { }
+try {
+$txProp = Get-NetAdapterAdvancedProperty -Name $_.Name -RegistryKeyword "*TransmitBuffers" -AllProperties -ErrorAction Stop
+if ($txProp.NumericParameterMaxValue) { Set-NetAdapterAdvancedProperty -Name $_.Name -RegistryKeyword "*TransmitBuffers" -RegistryValue $txProp.NumericParameterMaxValue -ErrorAction Stop }
+} catch { }
 }
 
 # disable sysmain (superfetch)
@@ -1617,9 +1628,9 @@ cmd /c "reg add `"HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Power`" 
 # disable power throttling
 cmd /c "reg add `"HKLM\SYSTEM\CurrentControlSet\Control\Power\PowerThrottling`" /v `"PowerThrottlingOff`" /t REG_DWORD /d `"1`" /f >nul 2>&1"
 
-# light cpu boost - aggressive turbo/boost mode within the cpu's own factory limits, no overclock
-cmd /c "powercfg /setacvalueindex scheme_current sub_processor PERFBOOSTMODE 2 >nul 2>&1"
-cmd /c "powercfg /setdcvalueindex scheme_current sub_processor PERFBOOSTMODE 2 >nul 2>&1"
+# cpu boost - aggressive-at-guaranteed mode: holds the cpu at its guaranteed boosted frequency more consistently, still within the cpu's own factory limits, no overclock
+cmd /c "powercfg /setacvalueindex scheme_current sub_processor PERFBOOSTMODE 5 >nul 2>&1"
+cmd /c "powercfg /setdcvalueindex scheme_current sub_processor PERFBOOSTMODE 5 >nul 2>&1"
 
 # disable core parking - forces all cores to stay fully awake instead of idling/parking, removes wake-up latency spikes
 # tradeoff: higher idle power draw and heat, always-on, same family as disabledynamictick above
