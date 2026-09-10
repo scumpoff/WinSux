@@ -918,14 +918,32 @@ $nipfile = @'
       <ProfileSetting>
         <SettingNameInfo>Ultra Low Latency - CPL State</SettingNameInfo>
         <SettingID>390467</SettingID>
-        <SettingValue>2</SettingValue>
+        <SettingValue>0</SettingValue>
         <ValueType>Dword</ValueType>
       </ProfileSetting>
       <ProfileSetting>
         <SettingNameInfo>Ultra Low Latency - Enabled</SettingNameInfo>
         <SettingID>277041152</SettingID>
+        <SettingValue>0</SettingValue>
+        <ValueType>Dword</ValueType>
+      </ProfileSetting>
+      <ProfileSetting>
+        <SettingNameInfo>rBAR - Feature</SettingNameInfo>
+        <SettingID>983226</SettingID>
         <SettingValue>1</SettingValue>
         <ValueType>Dword</ValueType>
+      </ProfileSetting>
+      <ProfileSetting>
+        <SettingNameInfo>rBAR - Options</SettingNameInfo>
+        <SettingID>983227</SettingID>
+        <SettingValue>1</SettingValue>
+        <ValueType>Dword</ValueType>
+      </ProfileSetting>
+      <ProfileSetting>
+        <SettingNameInfo>rBAR - Size Limit</SettingNameInfo>
+        <SettingID>983295</SettingID>
+        <SettingValue>17179869184</SettingValue>
+        <ValueType>Qword</ValueType>
       </ProfileSetting>
       <ProfileSetting>
         <SettingNameInfo>Vertical Sync</SettingNameInfo>
@@ -1403,6 +1421,10 @@ Get-ChildItem -Path $_.PSPath -ErrorAction SilentlyContinue | ForEach-Object {
 $devicePath = ($_.Name -replace 'HKEY_LOCAL_MACHINE', 'HKLM')
 cmd /c "reg add `"$devicePath\Device Parameters\Interrupt Management\MessageSignaledInterruptProperties`" /v `"MSISupported`" /t REG_DWORD /d `"1`" /f >nul 2>&1"
 cmd /c "reg add `"$devicePath\Device Parameters\Interrupt Management\Affinity Policy`" /v `"DevicePriority`" /t REG_DWORD /d `"3`" /f >nul 2>&1"
+# spread the gpu's message-signaled interrupts across every core instead of letting windows land them
+# all on cpu0, which is also where most other device interrupts end up. DevicePolicy 5 =
+# IrqPolicySpreadMessagesAcrossAllProcessors, only meaningful because MSI mode is enabled just above
+cmd /c "reg add `"$devicePath\Device Parameters\Interrupt Management\Affinity Policy`" /v `"DevicePolicy`" /t REG_DWORD /d `"5`" /f >nul 2>&1"
 }
 }
 
