@@ -39,146 +39,7 @@
     	taskkill /im trustedinstaller.exe /f >$null
   		}
         }
-		Write-Progress -Id 1 -Activity "Optimisation en cours" -Status "Suppression des applications heritees" -PercentComplete 25
-		Write-Host "Suppression des applications heritees`n"
-		## appwiz.cpl
-
-# uninstall brlapi
-cmd /c "sc stop `"brlapi`" >nul 2>&1"
-cmd /c "sc delete `"brlapi`" >nul 2>&1"
-cmd /c "takeown /f `"$env:SystemRoot\brltty`" /r /d y >nul 2>&1"
-cmd /c "icacls `"$env:SystemRoot\brltty`" /grant *S-1-5-32-544:F /t >nul 2>&1"
-Remove-Item "$env:SystemRoot\brltty" -Recurse -Force -ErrorAction SilentlyContinue | Out-Null
-
-# uninstall microsoft gameinput
-$findmicrosoftgameinput = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*"
-$microsoftgameinput = Get-ItemProperty $findmicrosoftgameinput -ErrorAction SilentlyContinue |
-Where-Object { $_.DisplayName -like "*Microsoft GameInput*" }
-if ($microsoftgameinput) {
-$guid = $microsoftgameinput.PSChildName
-Start-Process "msiexec.exe" -ArgumentList "/x $guid /qn /norestart" -Wait -NoNewWindow
-}
-
-# stop onedrive running
-Stop-Process -Force -Name OneDrive -ErrorAction SilentlyContinue | Out-Null
-
-# uninstall onedrive
-cmd /c "C:\Windows\System32\OneDriveSetup.exe -uninstall >nul 2>&1"
-# uninstall office 365 onedrive
-Get-ChildItem -Path "C:\Program Files*\Microsoft OneDrive", "$env:LOCALAPPDATA\Microsoft\OneDrive" -Filter "OneDriveSetup.exe" -Recurse -ErrorAction SilentlyContinue |
-ForEach-Object { Start-Process -Wait $_.FullName -ArgumentList "/uninstall /allusers" -WindowStyle Hidden -ErrorAction SilentlyContinue }
-# windows 10 uninstall onedrive
-cmd /c "C:\Windows\SysWOW64\OneDriveSetup.exe -uninstall >nul 2>&1"
-# windows 10 remove onedrive scheduled tasks
-Get-ScheduledTask | Where-Object {$_.Taskname -match 'OneDrive'} | Unregister-ScheduledTask -Confirm:$false
-
-# uninstall remote desktop connection
-try {
-Start-Process "mstsc" -ArgumentList "/Uninstall" -ErrorAction SilentlyContinue
-} catch { }
-# silent window for remote desktop connection
-$processExists = Get-Process -Name mstsc -ErrorAction SilentlyContinue
-if ($processExists) {
-$running = $true
-$timeout = 0
-do {
-$mstscProcess = Get-Process -Name mstsc -ErrorAction SilentlyContinue
-if ($mstscProcess -and $mstscProcess.MainWindowHandle -ne 0) {
-Stop-Process -Force -Name mstsc -ErrorAction SilentlyContinue | Out-Null
-$running = $false
-}
-Start-Sleep -Milliseconds 100
-$timeout++
-if ($timeout -gt 100) {
-Stop-Process -Name mstsc -Force -ErrorAction SilentlyContinue
-$running = $false
-}
-} while ($running)
-}
-Start-Sleep -Seconds 1
-
-# windows 10 uninstall old snipping tool
-try {
-Start-Process "C:\Windows\System32\SnippingTool.exe" -ArgumentList "/Uninstall" -ErrorAction SilentlyContinue
-} catch { }
-# silent window for uninstall old snipping tool
-$processExists = Get-Process -Name SnippingTool -ErrorAction SilentlyContinue
-if ($processExists) {
-$running = $true
-$timeout = 0
-do {
-$snipProcess = Get-Process -Name SnippingTool -ErrorAction SilentlyContinue
-if ($snipProcess -and $snipProcess.MainWindowHandle -ne 0) {
-Stop-Process -Force -Name SnippingTool -ErrorAction SilentlyContinue | Out-Null
-$running = $false
-}
-Start-Sleep -Milliseconds 100
-$timeout++
-if ($timeout -gt 100) {
-Stop-Process -Name SnippingTool -Force -ErrorAction SilentlyContinue
-$running = $false
-}
-} while ($running)
-}
-Start-Sleep -Seconds 1
-
-# windows 10 uninstall update for windows 10 for x64-based systems
-$findupdateforwindows = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*"
-$updateforwindows = Get-ItemProperty $findupdateforwindows -ErrorAction SilentlyContinue |
-Where-Object { $_.DisplayName -like "*Update for x64-based Windows Systems*" }
-if ($updateforwindows) {
-$guid = $updateforwindows.PSChildName
-Start-Process "msiexec.exe" -ArgumentList "/x $guid /qn /norestart" -Wait -NoNewWindow
-}
-
-# windows 10 uninstall microsoft update health tools
-$findupdatehealthtools = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*"
-$updatehealthtools = Get-ItemProperty $findupdatehealthtools -ErrorAction SilentlyContinue |
-Where-Object { $_.DisplayName -like "*Microsoft Update Health Tools*" }
-if ($updatehealthtools) {
-$guid = $updatehealthtools.PSChildName
-Start-Process "msiexec.exe" -ArgumentList "/x $guid /qn /norestart" -Wait -NoNewWindow
-}
-cmd /c "reg delete `"HKLM\SYSTEM\ControlSet001\Services\uhssvc`" /f >nul 2>&1"
-Unregister-ScheduledTask -TaskName PLUGScheduler -Confirm:$false -ErrorAction SilentlyContinue | Out-Null
-
-# remove 3rd party startup apps
-        ## taskmgr /0 /startup
-        ## ms-settings:startupapps
-cmd /c "reg delete `"HKCU\Software\Microsoft\Windows\CurrentVersion\RunNotification`" /f >nul 2>&1"
-cmd /c "reg add `"HKCU\Software\Microsoft\Windows\CurrentVersion\RunNotification`" /f >nul 2>&1"
-cmd /c "reg delete `"HKCU\Software\Microsoft\Windows\CurrentVersion\RunOnce`" /f >nul 2>&1"
-cmd /c "reg add `"HKCU\Software\Microsoft\Windows\CurrentVersion\RunOnce`" /f >nul 2>&1"
-cmd /c "reg delete `"HKCU\Software\Microsoft\Windows\CurrentVersion\Run`" /f >nul 2>&1"
-cmd /c "reg add `"HKCU\Software\Microsoft\Windows\CurrentVersion\Run`" /f >nul 2>&1"
-cmd /c "reg delete `"HKLM\Software\Microsoft\Windows\CurrentVersion\RunOnce`" /f >nul 2>&1"
-cmd /c "reg add `"HKLM\Software\Microsoft\Windows\CurrentVersion\RunOnce`" /f >nul 2>&1"
-cmd /c "reg delete `"HKLM\Software\Microsoft\Windows\CurrentVersion\Run`" /f >nul 2>&1"
-cmd /c "reg add `"HKLM\Software\Microsoft\Windows\CurrentVersion\Run`" /f >nul 2>&1"
-cmd /c "reg delete `"HKLM\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\RunOnce`" /f >nul 2>&1"
-cmd /c "reg add `"HKLM\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\RunOnce`" /f >nul 2>&1"
-cmd /c "reg delete `"HKLM\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Run`" /f >nul 2>&1"
-cmd /c "reg add `"HKLM\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Run`" /f >nul 2>&1"
-Remove-Item -Recurse -Force "$env:AppData\Microsoft\Windows\Start Menu\Programs\Startup" -ErrorAction SilentlyContinue | Out-Null
-Remove-Item -Recurse -Force "$env:ProgramData\Microsoft\Windows\Start Menu\Programs\StartUp" -ErrorAction SilentlyContinue | Out-Null
-New-Item -Path "$env:AppData\Microsoft\Windows\Start Menu\Programs\Startup" -ItemType Directory -ErrorAction SilentlyContinue | Out-Null
-New-Item -Path "$env:ProgramData\Microsoft\Windows\Start Menu\Programs\StartUp" -ItemType Directory -ErrorAction SilentlyContinue | Out-Null
-
-# remove 3rd party scheduled tasks
-        ## taskschd.msc
-		## regedit HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Schedule\TaskCache\Tree
-		## C:\Windows\System32\Tasks
-$treePath = "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Schedule\TaskCache\Tree"
-Get-ChildItem $treePath | Where-Object { $_.PSChildName -ne "Microsoft" } | ForEach-Object {
-Run-Trusted "Remove-Item '$($_.PSPath)' -Recurse -Force"
-}
-
-$tasksPath = "$env:SystemRoot\System32\Tasks"
-Get-ChildItem $tasksPath | Where-Object { $_.Name -ne "Microsoft" } | ForEach-Object {
-Remove-Item $_.FullName -Recurse -Force
-}
-
-		Write-Progress -Id 1 -Activity "Optimisation en cours" -Status "Parametres Windows" -PercentComplete 31
+		Write-Progress -Id 1 -Activity "Optimisation en cours" -Status "Parametres Windows" -PercentComplete 8
 		Write-Host "Parametres Windows`n"
 		## regedit
 		## control
@@ -186,6 +47,9 @@ Remove-Item $_.FullName -Recurse -Force
         ## ms-settings:privacy
 		## ms-settings:backup
 		
+
+Write-Progress -Id 2 -ParentId 1 -Activity "Parametres Windows" -Status "1/11 Confidentialite et permissions des applications" -PercentComplete 9
+Write-Host "  [1/11] Confidentialite et permissions des applications"
 # fix 1 for turn off privacy & security app permissions
 # stop cam service and remove the database
 Stop-Service -Name 'camsvc' -Force -ErrorAction SilentlyContinue
@@ -195,6 +59,9 @@ Run-Trusted -command $capabilityconsentstoragedb
 # fix for disable windows backup
 cmd /c "reg add `"HKLM\SYSTEM\ControlSet001\Services\CDPUserSvc`" /v `"Start`" /t REG_DWORD /d `"4`" /f >nul 2>&1"
 
+
+Write-Progress -Id 2 -ParentId 1 -Activity "Parametres Windows" -Status "2/11 Import du registre principal (reg.reg)" -PercentComplete 18
+Write-Host "  [2/11] Import du registre principal (reg.reg)"
 # import steptwo reg file
 Start-Process -Wait "regedit.exe" -ArgumentList "/S `"$env:SystemRoot\Temp\reg.reg`"" -WindowStyle Hidden
 
@@ -226,6 +93,9 @@ Stop-Service -Name 'camsvc' -Force -ErrorAction SilentlyContinue
 $capabilityconsentstoragedb = "Remove-item `"$env:ProgramData\Microsoft\Windows\CapabilityAccessManager\CapabilityConsentStorage.db*`" -Force"
 Run-Trusted -command $capabilityconsentstoragedb
 
+
+Write-Progress -Id 2 -ParentId 1 -Activity "Parametres Windows" -Status "3/11 Memoire et chiffrement" -PercentComplete 27
+Write-Host "  [3/11] Memoire et chiffrement"
 # disable memorycompression
         ## powershell -noexit -command "get-mmagent"
 Disable-MMAgent -MemoryCompression -ErrorAction SilentlyContinue | Out-Null
@@ -244,6 +114,9 @@ Disable-BitLocker -MountPoint $_.MountPoint -ErrorAction SilentlyContinue | Out-
 }
 } catch { }
 
+
+Write-Progress -Id 2 -ParentId 1 -Activity "Parametres Windows" -Status "4/11 SmartScreen et taches planifiees" -PercentComplete 36
+Write-Host "  [4/11] SmartScreen et taches planifiees"
 # smartscreen for microsoft edge - needs normal boot as admin
 cmd /c "reg add `"HKEY_CURRENT_USER\SOFTWARE\Microsoft\Edge\SmartScreenEnabled`" /ve /t REG_DWORD /d `"0`" /f >nul 2>&1"
 
@@ -263,6 +136,9 @@ schtasks /Change /TN "Microsoft\Windows\Windows Defender\Windows Defender Verifi
         ## dfrgui
 Get-ScheduledTask | Where-Object {$_.TaskName -match 'ScheduledDefrag'} | Disable-ScheduledTask | Out-Null
 
+
+Write-Progress -Id 2 -ParentId 1 -Activity "Parametres Windows" -Status "5/11 Reseau - protocoles inutiles" -PercentComplete 45
+Write-Host "  [5/11] Reseau - protocoles inutiles"
 # disable all network adapters except ipv4
         ## powershell -noexit -command "get-netadapterbinding | select-object name, displayname, componentid, enabled | format-table -autosize"
         ## ncpa.cpl
@@ -271,6 +147,9 @@ foreach ($adapterbinding in $adapterstodisable) {
 Disable-NetAdapterBinding -Name "*" -ComponentID $adapterbinding -ErrorAction SilentlyContinue
 }
 
+
+Write-Progress -Id 2 -ParentId 1 -Activity "Parametres Windows" -Status "6/11 Windows Update" -PercentComplete 54
+Write-Host "  [6/11] Windows Update"
 # pause updates
         ## ms-settings:windowsupdate
 $pause = (Get-Date).AddDays(365)
@@ -296,6 +175,9 @@ reg add "HKLM\Software\Policies\Microsoft\Windows\WindowsUpdate" /v "ExcludeWUDr
 reg add "HKLM\Software\Policies\Microsoft\Windows\WindowsUpdate\AU" /v "IncludeRecommendedUpdates" /t REG_DWORD /d 0 /f | Out-Null
 reg add "HKLM\Software\Policies\Microsoft\Windows\WindowsUpdate\AU" /v "EnableFeaturedSoftware" /t REG_DWORD /d 0 /f | Out-Null
 
+
+Write-Progress -Id 2 -ParentId 1 -Activity "Parametres Windows" -Status "7/11 Notifications et session" -PercentComplete 63
+Write-Host "  [7/11] Notifications et session"
 # disable if you've been away, when should windows require you to sign in again?
         ## ms-settings:signinoptions
 powercfg /setdcvalueindex scheme_current sub_none consolelock 0 2>$null
@@ -376,6 +258,9 @@ Start-Sleep -Seconds 2
 reg unload "HKLM\Settings" >$null 2>&1
 }
 
+
+Write-Progress -Id 2 -ParentId 1 -Activity "Parametres Windows" -Status "8/11 Economies d energie des peripheriques" -PercentComplete 72
+Write-Host "  [8/11] Economies d energie des peripheriques"
 # disable network adapter powersaving & wake on all connected devices
 $basePath = "HKLM:\System\ControlSet001\Control\Class\{4d36e972-e325-11ce-bfc1-08002be10318}"
 $adapterKeys = Get-ChildItem -Path $basePath -ErrorAction SilentlyContinue
@@ -519,6 +404,9 @@ $diskPath = Join-Path $_.PSPath "Disk"
 cmd /c "reg add `"$(($diskPath -replace 'Microsoft.PowerShell.Core\\Registry::',''))`" /v `"CacheIsPowerProtected`" /t REG_DWORD /d `"1`" /f >nul 2>&1"
 }
 
+
+Write-Progress -Id 2 -ParentId 1 -Activity "Parametres Windows" -Status "9/11 Interface - barre des taches et ecran de verrouillage" -PercentComplete 81
+Write-Host "  [9/11] Interface - barre des taches et ecran de verrouillage"
 # import notepad settings
         ## notepad
 # stop notepad running
@@ -579,6 +467,9 @@ cmd /c "reg add `"HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Personalization
 cmd /c "reg add `"HKCU\Control Panel\Desktop`" /v `"Wallpaper`" /t REG_SZ /d `"C:\Windows\Black.jpg`" /f >nul 2>&1"
 rundll32.exe user32.dll, UpdatePerUserSystemParameters
 
+
+Write-Progress -Id 2 -ParentId 1 -Activity "Parametres Windows" -Status "10/11 Menu contextuel" -PercentComplete 90
+Write-Host "  [10/11] Menu contextuel"
 # remove context menu items
 # restore the classic context menu
 cmd /c "reg add `"HKCU\Software\Classes\CLSID\{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}\InprocServer32`" /ve /t REG_SZ /d `"`" /f >nul 2>&1"
@@ -617,6 +508,9 @@ cmd /c "reg add `"HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer`" /v `
 cmd /c "reg delete `"HKCR\AllFilesystemObjects\shellex\ContextMenuHandlers\SendTo`" /f >nul 2>&1"
 cmd /c "reg delete `"HKCR\UserLibraryFolder\shellex\ContextMenuHandlers\SendTo`" /f >nul 2>&1"
 
+
+Write-Progress -Id 2 -ParentId 1 -Activity "Parametres Windows" -Status "11/11 Menu Demarrer et raccourcis" -PercentComplete 100
+Write-Host "  [11/11] Menu Demarrer et raccourcis"
 # windows 10 import start menu
 # delete startmenulayout.xml
 Remove-Item -Recurse -Force "$env:SystemDrive\Windows\StartMenuLayout.xml" -ErrorAction SilentlyContinue | Out-Null
@@ -721,6 +615,7 @@ cmd /c "reg add `"HKCU\Software\Microsoft\Windows\CurrentVersion\Start`" /v `"Al
 Stop-Process -Force -Name explorer -ErrorAction SilentlyContinue | Out-Null
 Start-Sleep -Seconds 10
 
+Write-Progress -Id 2 -Activity "Parametres Windows" -Completed
 
 # detect nvidia gpu automatically - nvidia only, no menu, no user action
 # detect by pci vendor id (VEN_10DE = NVIDIA), not by driver-reported name - the name-based check fails right after DDU wipes the driver, since windows falls back to a generic "Microsoft Basic Display Adapter" name until a driver is reinstalled
@@ -729,7 +624,7 @@ $hasNvidia = [bool](Get-PnpDevice -Class Display -ErrorAction SilentlyContinue |
 if ($hasNvidia) {
         Clear-Host
 
-        Write-Progress -Id 1 -Activity "Optimisation en cours" -Status "Telechargement du pilote GPU Nvidia" -PercentComplete 38
+        Write-Progress -Id 1 -Activity "Optimisation en cours" -Status "Telechargement du pilote GPU Nvidia" -PercentComplete 16
         Write-Host "Telechargement du pilote GPU Nvidia`n"
     	## explorer "https://www.nvidia.com/en-us/drivers"
 		## shell:appsFolder\NVIDIACorp.NVIDIAControlPanel_56jybvy8sckqj!NVIDIACorp.NVIDIAControlPanel
@@ -854,7 +749,7 @@ Start-Process "https://www.nvidia.com/en-us/drivers"
 Pause
 Clear-Host
 
-        Write-Progress -Id 1 -Activity "Optimisation en cours" -Status "Selection du pilote" -PercentComplete 44
+        Write-Progress -Id 1 -Activity "Optimisation en cours" -Status "Selection du pilote" -PercentComplete 22
         Write-Host "Selectionnez le pilote telecharge`n"
 
 Start-Sleep -Seconds 5
@@ -868,7 +763,7 @@ $InstallFile = $Dialog.FileName
 # only extract/install if we actually have a driver file - the manual dialog can be cancelled, leaving $InstallFile empty
 if ($InstallFile -and (Test-Path $InstallFile)) {
 
-        Write-Progress -Id 1 -Activity "Optimisation en cours" -Status "Allegement du pilote" -PercentComplete 50
+        Write-Progress -Id 1 -Activity "Optimisation en cours" -Status "Allegement du pilote" -PercentComplete 28
         Write-Host "Allegement du pilote`n"
 
 # extract driver with 7zip
@@ -894,7 +789,7 @@ Remove-Item "$env:SystemRoot\Temp\nvidiadriver\$item" -Recurse -Force -ErrorActi
 }
 Write-Progress -Id 2 -Activity "Allegement du pilote" -Completed
 
-        Write-Progress -Id 1 -Activity "Optimisation en cours" -Status "Installation du pilote" -PercentComplete 56
+        Write-Progress -Id 1 -Activity "Optimisation en cours" -Status "Installation du pilote" -PercentComplete 34
         Write-Host "Installation du pilote`n"
 
 # install nvidia driver
@@ -918,7 +813,7 @@ Remove-Item "$env:SystemDrive\NVIDIA" -Recurse -Force -ErrorAction SilentlyConti
 Write-Host "Aucun fichier pilote disponible - installation du pilote ignoree`n"
 }
 
-        Write-Progress -Id 1 -Activity "Optimisation en cours" -Status "Importation des parametres" -PercentComplete 63
+        Write-Progress -Id 1 -Activity "Optimisation en cours" -Status "Importation des parametres" -PercentComplete 44
         Write-Host "Importation des parametres`n"
 
 # turn on disable dynamic pstate
@@ -1235,7 +1130,7 @@ Register-ScheduledTask -TaskName "GPU Boost" -Action $gpuBoostAction -Trigger $g
 } catch { }
 }
 
-        Write-Progress -Id 1 -Activity "Optimisation en cours" -Status "Optimisations jeux" -PercentComplete 69
+        Write-Progress -Id 1 -Activity "Optimisation en cours" -Status "Optimisations jeux" -PercentComplete 54
         Write-Host "Optimisations jeux`n"
 
 # disable game dvr & fullscreen optimizations
@@ -1528,7 +1423,7 @@ cmd /c "reg add `"HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\S
 # disable storage sense - stops unpredictable background disk scans/cleanup that can interfere with the manual cleanup already done
 cmd /c "reg add `"HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\StorageSense\Parameters\StoragePolicy`" /v `"01`" /t REG_DWORD /d `"0`" /f >nul 2>&1"
 
-        Write-Progress -Id 1 -Activity "Optimisation en cours" -Status "Peripheriques et audio" -PercentComplete 75
+        Write-Progress -Id 1 -Activity "Optimisation en cours" -Status "Peripheriques et audio" -PercentComplete 64
         Write-Host "Peripheriques et audio`n"
 
 # disable mouse pointer acceleration (raw input, no smoothing)
@@ -1573,7 +1468,7 @@ New-CimInstance -ClassName Win32_PageFileSetting -Property @{Name="C:\pagefile.s
 cmd /c "sc stop `"DiagTrack`" >nul 2>&1"
 cmd /c "sc config `"DiagTrack`" start= disabled >nul 2>&1"
 
-        Write-Progress -Id 1 -Activity "Optimisation en cours" -Status "Mode d'alimentation" -PercentComplete 81
+        Write-Progress -Id 1 -Activity "Optimisation en cours" -Status "Mode d'alimentation" -PercentComplete 72
         Write-Host "Mode d'alimentation`n"
         ## powercfg.cpl
 
@@ -1796,7 +1691,7 @@ powercfg /setdcvalueindex 99999999-9999-9999-9999-999999999999 de830923-a562-41a
 powercfg /setacvalueindex 99999999-9999-9999-9999-999999999999 de830923-a562-41af-a086-e3a2c6bad2da e69653ca-cf7f-4f05-aa73-cb833fa90ad4 0x00000000 2>$null
 powercfg /setdcvalueindex 99999999-9999-9999-9999-999999999999 de830923-a562-41af-a086-e3a2c6bad2da e69653ca-cf7f-4f05-aa73-cb833fa90ad4 0x00000000 2>$null
 
-        Write-Progress -Id 1 -Activity "Optimisation en cours" -Status "Resolution du minuteur" -PercentComplete 88
+        Write-Progress -Id 1 -Activity "Optimisation en cours" -Status "Resolution du minuteur" -PercentComplete 82
         Write-Host "Resolution du minuteur`n"
         ## services.msc
 
@@ -1848,7 +1743,7 @@ cmd /c "cd /d %systemroot%\system32 && lodctr /R >nul 2>&1"
 cmd /c "cd /d %systemroot%\sysWOW64 && lodctr /R >nul 2>&1"
 
 
-		Write-Progress -Id 1 -Activity "Optimisation en cours" -Status "Nettoyage de disque" -PercentComplete 94
+		Write-Progress -Id 1 -Activity "Optimisation en cours" -Status "Nettoyage de disque" -PercentComplete 90
 		Write-Host "Nettoyage de disque`n"
 		## cleanmgr.exe
 		## %temp%
