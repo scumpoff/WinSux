@@ -96,10 +96,13 @@ Run-Trusted -command $capabilityconsentstoragedb
 
 Write-Progress -Id 2 -ParentId 1 -Activity "Parametres Windows" -Status "3/11 Memoire et chiffrement" -PercentComplete 27
 Write-Host "  [3/11] Memoire et chiffrement"
-# disable memorycompression
+# memory compression is deliberately LEFT ON.
+# disabling it only pays off with a lot of ram: below 16 GB it pushes the system to the pagefile sooner,
+# which trades a little cpu for disk stalls - the opposite of what this pack is for.
+# re-enable it in case an earlier run of this pack turned it off
         ## powershell -noexit -command "get-mmagent"
-Disable-MMAgent -MemoryCompression -ErrorAction SilentlyContinue | Out-Null
-# page combining costs cpu cycles scanning for identical pages, pointless on a machine with spare ram
+Enable-MMAgent -MemoryCompression -ErrorAction SilentlyContinue | Out-Null
+# page combining is a different feature and stays off: it burns cpu cycles scanning for identical pages
 Disable-MMAgent -PageCombining -ErrorAction SilentlyContinue | Out-Null
 
 # disable bitlocker
@@ -150,18 +153,15 @@ Disable-NetAdapterBinding -Name "*" -ComponentID $adapterbinding -ErrorAction Si
 
 Write-Progress -Id 2 -ParentId 1 -Activity "Parametres Windows" -Status "6/11 Windows Update" -PercentComplete 54
 Write-Host "  [6/11] Windows Update"
-# pause updates
-        ## ms-settings:windowsupdate
-$pause = (Get-Date).AddDays(365)
-$today = Get-Date
-$today = $today.ToUniversalTime().ToString( "yyyy-MM-ddTHH:mm:ssZ" )
-$pause = $pause.ToUniversalTime().ToString( "yyyy-MM-ddTHH:mm:ssZ" )
-Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\WindowsUpdate\UX\Settings" -Name "PauseUpdatesExpiryTime" -Value $pause -Force >$null
-Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\WindowsUpdate\UX\Settings" -Name "PauseFeatureUpdatesEndTime" -Value $pause -Force >$null
-Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\WindowsUpdate\UX\Settings" -Name "PauseFeatureUpdatesStartTime" -Value $today -Force >$null
-Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\WindowsUpdate\UX\Settings" -Name "PauseQualityUpdatesEndTime" -Value $pause -Force >$null
-Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\WindowsUpdate\UX\Settings" -Name "PauseQualityUpdatesStartTime" -Value $today -Force >$null
-Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\WindowsUpdate\UX\Settings" -Name "PauseUpdatesStartTime" -Value $today -Force >$null
+# security and quality updates are deliberately NOT paused any more.
+# only DRIVER updates are blocked below - that is what protects the freshly installed nvidia driver from
+# being overwritten by windows update. pausing everything else for a year on a machine that also runs
+# without defender is a different trade, and not one this pack should make on its own.
+# clear a pause left by an earlier run of this pack
+foreach ($pauseValue in 'PauseUpdatesExpiryTime','PauseFeatureUpdatesEndTime','PauseFeatureUpdatesStartTime',
+'PauseQualityUpdatesEndTime','PauseQualityUpdatesStartTime','PauseUpdatesStartTime') {
+Remove-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\WindowsUpdate\UX\Settings" -Name $pauseValue -Force -ErrorAction SilentlyContinue
+}
 
 # block all windows driver updates
         ## ms-settings:windowsupdate
