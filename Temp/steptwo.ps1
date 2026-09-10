@@ -1435,6 +1435,16 @@ Enable-NetAdapterRss -Name "*" -ErrorAction SilentlyContinue | Out-Null
 # enable explicit congestion notification - reduces packet loss/retransmits under congestion, no throughput cost
 cmd /c "netsh int tcp set global ecncapability=enabled >nul 2>&1"
 
+# disable receive segment coalescing - trades a bit of cpu efficiency for lower per-packet latency
+cmd /c "netsh int tcp set global rsc=disabled >nul 2>&1"
+
+# disable tcp timestamps - shaves a few bytes/cycles of per-packet overhead
+cmd /c "netsh int tcp set global timestamps=disabled >nul 2>&1"
+
+# widen the ephemeral port range and shorten time_wait - avoids port exhaustion stalls under heavy connection churn (voice chat, matchmaking, many short-lived sockets)
+cmd /c "reg add `"HKLM\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters`" /v `"MaxUserPort`" /t REG_DWORD /d `"65534`" /f >nul 2>&1"
+cmd /c "reg add `"HKLM\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters`" /v `"TcpTimedWaitDelay`" /t REG_DWORD /d `"30`" /f >nul 2>&1"
+
 # disable unused ipv6 tunneling adapters - removes background negotiation overhead, no effect on normal connectivity
 cmd /c "netsh interface teredo set state disabled >nul 2>&1"
 cmd /c "netsh interface 6to4 set state disabled >nul 2>&1"
