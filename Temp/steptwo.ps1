@@ -973,7 +973,7 @@ Start-Sleep -Seconds 10
 
 # download driver
 Start-Sleep -Seconds 5
-Start-Process "C:\Program Files\Google\Chrome\Application\chrome.exe" "https://www.nvidia.com/en-us/drivers"
+Start-Process "https://www.nvidia.com/en-us/drivers"
 Pause
 Clear-Host
 
@@ -1287,7 +1287,7 @@ Start-Process -wait "$env:SystemRoot\Temp\inspector.exe" -ArgumentList "-silentI
 
 # download driver
 Start-Sleep -Seconds 5
-Start-Process "C:\Program Files\Google\Chrome\Application\chrome.exe" "https://www.amd.com/en/support/download/drivers.html"
+Start-Process "https://www.amd.com/en/support/download/drivers.html"
 Pause
 Clear-Host
 
@@ -1502,7 +1502,7 @@ cmd /c "reg add `"HKCU\Software\AMD\CN\VirtualSuperResolution`" /v `"AlreadyNoti
 
 # download driver
 Start-Sleep -Seconds 5
-Start-Process "C:\Program Files\Google\Chrome\Application\chrome.exe" "https://www.intel.com/content/www/us/en/search.html#sortCriteria=%40lastmodifieddt%20descending&f-operatingsystem_en=Windows%2011%20Family*&f-downloadtype=Drivers&cf-tabfilter=Downloads&cf-downloadsppth=Graphics"
+Start-Process "https://www.intel.com/content/www/us/en/search.html#sortCriteria=%40lastmodifieddt%20descending&f-operatingsystem_en=Windows%2011%20Family*&f-downloadtype=Drivers&cf-tabfilter=Downloads&cf-downloadsppth=Graphics"
 Pause
 Clear-Host
 

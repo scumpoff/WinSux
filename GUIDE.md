@@ -20,7 +20,7 @@ WinSux-main/
 └── Temp/
     ├── stepone.ps1      <- étape 1 (safe mode)
     ├── steptwo.ps1      <- étape 2 (boot normal)
-    ├── 7zip.exe, chrome.exe, ddu.exe, directx.exe, inspector.exe
+    ├── 7zip.exe, ddu.exe, directx.exe, inspector.exe
     ├── vcredist*.exe (C++ redistributables)
     └── reg.reg, settimerresolutionservice.cs, start2.txt
 ```
@@ -40,7 +40,7 @@ Double-clique **`WinSux.ps1`** → "Exécuter avec PowerShell" (ou clic droit de
 ### 2. Phase 1 — automatique
 Le script :
 - copie les fichiers de `Temp/` vers `C:\Windows\Temp`
-- installe 7-Zip, les runtimes C++, DirectX, Google Chrome
+- installe 7-Zip, les runtimes C++, DirectX
 - extrait DDU (Display Driver Uninstaller)
 - programme `stepone.ps1` et `steptwo.ps1` pour s'exécuter automatiquement au prochain démarrage
 - active le démarrage en mode sans échec
@@ -58,7 +58,7 @@ Windows redémarre en mode sans échec et `stepone.ps1` se lance automatiquement
 Windows redémarre normalement et `steptwo.ps1` se lance automatiquement :
 - supprime Edge, les applications/fonctionnalités UWP et héritées inutiles
 - **⚠️ une pause manuelle ici** : un menu texte demande de choisir ton GPU (NVIDIA / AMD / Intel / Ignorer)
-  - Chrome s'ouvre sur la page des pilotes officiels → télécharge le pilote
+  - Ton navigateur par défaut s'ouvre sur la page des pilotes officiels → télécharge le pilote
   - reviens dans la fenêtre PowerShell, appuie sur une touche
   - une fenêtre de sélection de fichier s'ouvre → choisis le pilote téléchargé
   - le script débloate le pilote (retire GeForce Experience/telemetry/etc.), l'installe, puis applique un profil de tuning complet (NVIDIA : NVIDIA Profile Inspector avec low latency ultra, power management max perf, etc.)

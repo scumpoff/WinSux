@@ -50,7 +50,7 @@ Write-Progress -Id 2 -Activity "Telechargement des fichiers" -Completed
 }
 
         Write-Host "Installation de 7-Zip`n"
-        Write-Progress -Id 1 -Activity "Optimisation en cours" -Status "Installation de 7-Zip" -PercentComplete 17
+        Write-Progress -Id 1 -Activity "Optimisation en cours" -Status "Installation de 7-Zip" -PercentComplete 20
         ## explorer "https://www.7-zip.org"
 
 # install 7zip
@@ -65,7 +65,7 @@ Move-Item -Path "$env:ProgramData\Microsoft\Windows\Start Menu\Programs\7-Zip\7-
 Remove-Item "$env:ProgramData\Microsoft\Windows\Start Menu\Programs\7-Zip" -Recurse -Force -ErrorAction SilentlyContinue | Out-Null
 
         Write-Host "Installation de C++`n"
-        Write-Progress -Id 1 -Activity "Optimisation en cours" -Status "Installation de C++" -PercentComplete 33
+        Write-Progress -Id 1 -Activity "Optimisation en cours" -Status "Installation de C++" -PercentComplete 40
 		## explorer "https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist?view=msvc-170"
 
 # install c++
@@ -93,7 +93,7 @@ Start-Process -Wait "$env:SystemRoot\Temp\$($vc.File)" -ArgumentList $vc.Args -W
 Write-Progress -Id 2 -Activity "Installation de C++" -Completed
 
         Write-Host "DDU`n"
-        Write-Progress -Id 1 -Activity "Optimisation en cours" -Status "Extraction de DDU" -PercentComplete 50
+        Write-Progress -Id 1 -Activity "Optimisation en cours" -Status "Extraction de DDU" -PercentComplete 60
         ## explorer "https://www.wagnardsoft.com/display-driver-uninstaller-ddu"
 
 # extract ddu with 7zip
@@ -146,42 +146,8 @@ Set-ItemProperty -Path "$env:SystemRoot\Temp\ddu\Settings\Settings.xml" -Name Is
 # prevent downloads of drivers from windows update
 cmd /c "reg add `"HKLM\Software\Microsoft\Windows\CurrentVersion\DriverSearching`" /v `"SearchOrderConfig`" /t REG_DWORD /d `"0`" /f >nul 2>&1"
 
-        Write-Host "Installation de Chrome`n"
-        Write-Progress -Id 1 -Activity "Optimisation en cours" -Status "Installation de Chrome" -PercentComplete 67
-        ## explorer "https://www.google.com/intl/en_us/chrome"
-
-# install google chrome
-Start-Process -Wait "$env:SystemRoot\Temp\chrome.exe" -ArgumentList "--silent --install" -WindowStyle Hidden
-
-# install ublock origin lite
-cmd /c "reg add `"HKLM\SOFTWARE\Policies\Google\Chrome\ExtensionInstallForcelist`" /v `"1`" /t REG_SZ /d `"ddkjiahejlhfcafbddmgiahcphecmpfh;https://clients2.google.com/service/update2/crx`" /f >nul 2>&1"
-
-# add chrome policies
-cmd /c "reg add `"HKLM\SOFTWARE\Policies\Google\Chrome`" /v `"HardwareAccelerationModeEnabled`" /t REG_DWORD /d `"0`" /f >nul 2>&1"
-cmd /c "reg add `"HKLM\SOFTWARE\Policies\Google\Chrome`" /v `"BackgroundModeEnabled`" /t REG_DWORD /d `"0`" /f >nul 2>&1"
-cmd /c "reg add `"HKLM\SOFTWARE\Policies\Google\Chrome`" /v `"HighEfficiencyModeEnabled`" /t REG_DWORD /d `"1`" /f >nul 2>&1"
-
-# remove logon chrome
-$basePath = "HKLM:\Software\Microsoft\Active Setup\Installed Components"
-Get-ChildItem $basePath | ForEach-Object {
-$val = (Get-ItemProperty $_.PsPath)."(default)"
-if ($val -like "*Chrome*") {
-Remove-Item $_.PsPath -Force -ErrorAction SilentlyContinue
-}
-}
-
-# remove chrome services
-$services = Get-Service | Where-Object { $_.Name -match 'Google' }
-foreach ($service in $services) {
-cmd /c "sc stop `"$($service.Name)`" >nul 2>&1"
-cmd /c "sc delete `"$($service.Name)`" >nul 2>&1"
-}
-
-# remove chrome scheduled tasks
-Get-ScheduledTask | Where-Object { $_.TaskName -like '*Google*' } | Unregister-ScheduledTask -Confirm:$false -ErrorAction SilentlyContinue
-
         Write-Host "Installation de DirectX`n"
-        Write-Progress -Id 1 -Activity "Optimisation en cours" -Status "Installation de DirectX" -PercentComplete 83
+        Write-Progress -Id 1 -Activity "Optimisation en cours" -Status "Installation de DirectX" -PercentComplete 80
         ## explorer "https://www.microsoft.com/en-au/download/details.aspx?id=35"
 
 # extract directx with 7zip

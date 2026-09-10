@@ -22,11 +22,6 @@ Source: https://www.7-zip.org/a/7z2301-x64.exe
 SHA256: 26CB6E9F56333682122FAFE79DBCDFD51E9F47CC7217DCCD29AC6FC33B5598CD
 Copyright: (c) Igor Pavlov
 
-Name: chrome.exe
-Source: https://dl.google.com/chrome/install/ChromeSetup.exe
-SHA256: A0D0845F0CC3E2360DA593C4D074E661FDC30400B4479DFFA510D006AC758F15
-Copyright: (c) Google LLC
-
 Name: ddu.exe
 Source: https://www.wagnardsoft.com/DDU/download/DDU%20v18.1.4.2_setup.exe
 SHA256: 6073E6D311290D45B7A8AE4E832994C9487082531F89E4E01C99F86C0E38DA6C
