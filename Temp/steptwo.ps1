@@ -1620,6 +1620,12 @@ cmd /c "reg add `"HKLM\SYSTEM\CurrentControlSet\Control\Power\PowerThrottling`" 
 # light cpu boost - aggressive turbo/boost mode within the cpu's own factory limits, no overclock
 cmd /c "powercfg /setacvalueindex scheme_current sub_processor PERFBOOSTMODE 2 >nul 2>&1"
 cmd /c "powercfg /setdcvalueindex scheme_current sub_processor PERFBOOSTMODE 2 >nul 2>&1"
+
+# disable core parking - forces all cores to stay fully awake instead of idling/parking, removes wake-up latency spikes
+# tradeoff: higher idle power draw and heat, always-on, same family as disabledynamictick above
+cmd /c "powercfg /setacvalueindex scheme_current sub_processor PROCTHROTTLEMIN 100 >nul 2>&1"
+cmd /c "powercfg /setdcvalueindex scheme_current sub_processor PROCTHROTTLEMIN 100 >nul 2>&1"
+
 cmd /c "powercfg /setactive scheme_current >nul 2>&1"
 
 # modify desktop & laptop settings
