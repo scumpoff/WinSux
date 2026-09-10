@@ -132,7 +132,10 @@ $windowssecuritysettings = @(
 'cmd /c "reg add `"HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\Lsa`" /v `"RunAsPPL`" /t REG_DWORD /d `"0`" /f >nul 2>&1"',
 
 # microsoft vulnerable driver blocklist
-'cmd /c "reg add `"HKEY_LOCAL_MACHINE\System\ControlSet001\Control\CI\Config`" /v `"VulnerableDriverBlocklistEnable`" /t REG_DWORD /d `"0`" /f >nul 2>&1"'
+'cmd /c "reg add `"HKEY_LOCAL_MACHINE\System\ControlSet001\Control\CI\Config`" /v `"VulnerableDriverBlocklistEnable`" /t REG_DWORD /d `"0`" /f >nul 2>&1"',
+
+# disable windows update medic service - protected service that silently reverts update/telemetry tweaks, keeps the rest of the optimizations durable
+'cmd /c "sc config `"WaaSMedicSvc`" start= disabled >nul 2>&1"'
 )
 
 # run $windowssecuritysettings as function with trusted installer

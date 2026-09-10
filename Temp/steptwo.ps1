@@ -971,7 +971,39 @@ Start-Sleep -Seconds 10
     	## explorer "https://www.nvidia.com/en-us/drivers"
 		## shell:appsFolder\NVIDIACorp.NVIDIAControlPanel_56jybvy8sckqj!NVIDIACorp.NVIDIAControlPanel
 
-# download driver
+# fully automatic driver detection & download - no user action needed
+$InstallFile = $null
+try {
+$gpuName = (Get-CimInstance Win32_VideoController | Where-Object { $_.Name -like "*NVIDIA*" } | Select-Object -First 1).Name
+$productList = Invoke-RestMethod "https://www.nvidia.com/Download/API/lookupValueSearch.aspx?TypeID=3"
+$cleanGpuName = $gpuName -replace '^NVIDIA\s+', ''
+$match = $productList.LookupValueSearch.LookupValues.LookupValue | Where-Object {
+($_.Name -replace '^NVIDIA\s+', '') -eq $cleanGpuName
+} | Select-Object -First 1
+if (-not $match) {
+$match = $productList.LookupValueSearch.LookupValues.LookupValue | Where-Object {
+$_.Name -like "*$cleanGpuName*"
+} | Select-Object -First 1
+}
+if ($match) {
+$pfid = $match.Value
+$psid = $match.ParentID
+$osVersion = [System.Environment]::OSVersion.Version
+$osID = if ($osVersion.Build -ge 22000) { 135 } else { 57 }
+$driverInfo = Invoke-RestMethod "https://gfwsl.geforce.com/services_toolkit/services/com/nvidia/services/AjaxDriverService.php?func=DriverManualLookup&psid=$psid&pfid=$pfid&osID=$osID&languageCode=1033&beta=null&isWHQL=1&dltype=-1&dch=1&sort1=0&numberOfResults=1"
+$downloadUrl = $driverInfo.IDS[0].downloadInfo.DownloadURL
+if ($downloadUrl) {
+$InstallFile = "$env:SystemRoot\Temp\nvidia_driver_auto.exe"
+$oldProgressPreference = $ProgressPreference
+$ProgressPreference = 'SilentlyContinue'
+Invoke-WebRequest -Uri $downloadUrl -OutFile $InstallFile
+$ProgressPreference = $oldProgressPreference
+}
+}
+} catch { $InstallFile = $null }
+
+# fallback to manual download only if automatic detection/download failed
+if (-not $InstallFile -or -not (Test-Path $InstallFile)) {
 Start-Sleep -Seconds 5
 Start-Process "https://www.nvidia.com/en-us/drivers"
 Pause
@@ -979,13 +1011,13 @@ Clear-Host
 
         Write-Host "Selectionnez le pilote telecharge`n"
 
-# select driver
 Start-Sleep -Seconds 5
 Add-Type -AssemblyName System.Windows.Forms
 $Dialog = New-Object System.Windows.Forms.OpenFileDialog
 $Dialog.Filter = "All Files (*.*)|*.*"
 $Dialog.ShowDialog() | Out-Null
 $InstallFile = $Dialog.FileName
+}
 
         Write-Host "Allegement du pilote`n"
 
@@ -1780,6 +1812,21 @@ cmd /c "reg add `"HKLM\SYSTEM\CurrentControlSet\Control\PriorityControl`" /v `"W
 cmd /c "bcdedit /set disabledynamictick yes >nul 2>&1"
 cmd /c "bcdedit /set tscsyncpolicy Enhanced >nul 2>&1"
 cmd /c "bcdedit /set useplatformclock false >nul 2>&1"
+
+# increase gpu timeout detection delay - avoids false "driver crashed" resets during long/heavy frame renders
+cmd /c "reg add `"HKLM\SYSTEM\CurrentControlSet\Control\GraphicsDrivers`" /v `"TdrDelay`" /t REG_DWORD /d `"8`" /f >nul 2>&1"
+cmd /c "reg add `"HKLM\SYSTEM\CurrentControlSet\Control\GraphicsDrivers`" /v `"TdrDdiDelay`" /t REG_DWORD /d `"8`" /f >nul 2>&1"
+
+# disable background services with no benefit for a gaming pc
+cmd /c "sc stop `"DoSvc`" >nul 2>&1"
+cmd /c "sc config `"DoSvc`" start= disabled >nul 2>&1"
+cmd /c "sc stop `"NDU`" >nul 2>&1"
+cmd /c "sc config `"NDU`" start= disabled >nul 2>&1"
+cmd /c "sc stop `"PcaSvc`" >nul 2>&1"
+cmd /c "sc config `"PcaSvc`" start= disabled >nul 2>&1"
+
+# disable storage sense - stops unpredictable background disk scans/cleanup that can interfere with the manual cleanup already done
+cmd /c "reg add `"HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\StorageSense\Parameters\StoragePolicy`" /v `"01`" /t REG_DWORD /d `"0`" /f >nul 2>&1"
 
         Write-Host "Peripheriques et audio`n"
 
