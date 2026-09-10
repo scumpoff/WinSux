@@ -41,95 +41,6 @@
     	taskkill /im trustedinstaller.exe /f >$null
   		}
         }
-
-        Write-Host "Suppression d'Edge`n"
-        ## c:\program files (x86)\microsoft
-        ## powershell -NoExit -c "reg query 'HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\Packages' | findstr 'Microsoft-Windows-Internet-Browser-Package' | findstr '~~'"
-
-# get region to revert later
-$Region = Get-ItemPropertyValue 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Control Panel\DeviceRegion' -Name DeviceRegion -ErrorAction SilentlyContinue
-
-# set region to us
-Copy-Item (Get-Command reg.exe).Source .\reg1.exe -Force -EA 0
-& .\reg1.exe add 'HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Control Panel\DeviceRegion' /v DeviceRegion /t REG_DWORD /d 244 /f >$null
-
-# stop edge running
-$stop = "backgroundTaskHost", "Copilot", "CrossDeviceResume", "GameBar", "MicrosoftEdgeUpdate", "msedge", "msedgewebview2", "OneDrive", "OneDrive.Sync.Service", "OneDriveStandaloneUpdater", "Resume", "RuntimeBroker", "Search", "SearchHost", "Setup", "StoreDesktopExtension", "WidgetService", "Widgets"
-$stop | ForEach-Object { Stop-Process -Name $_ -Force -ErrorAction SilentlyContinue }
-Get-Process | Where-Object { $_.ProcessName -like "*edge*" } | Stop-Process -Force -ErrorAction SilentlyContinue
-
-# find edgeupdate.exe
-$edgeupdate = @(); "LocalApplicationData", "ProgramFilesX86", "ProgramFiles" | ForEach-Object {
-$folder = [Environment]::GetFolderPath($_)
-$edgeupdate += Get-ChildItem "$folder\Microsoft\EdgeUpdate\*.*.*.*\MicrosoftEdgeUpdate.exe" -rec -ea 0
-}
-
-# find edgeupdate & allow uninstall regedit
-$global:REG = "HKCU:\SOFTWARE", "HKLM:\SOFTWARE", "HKCU:\SOFTWARE\Policies", "HKLM:\SOFTWARE\Policies", "HKCU:\SOFTWARE\WOW6432Node", "HKLM:\SOFTWARE\WOW6432Node", "HKCU:\SOFTWARE\WOW6432Node\Policies", "HKLM:\SOFTWARE\WOW6432Node\Policies"
-foreach ($location in $REG) { Remove-Item "$location\Microsoft\EdgeUpdate" -recurse -force -ErrorAction SilentlyContinue }
-
-# uninstall edgeupdate
-foreach ($path in $edgeupdate) {
-if (Test-Path $path) { Start-Process -Wait $path -Args "/unregsvc" | Out-Null }
-do { Start-Sleep 3 } while ((Get-Process -Name "setup", "MicrosoftEdge*" -ErrorAction SilentlyContinue).Path -like "*\Microsoft\Edge*")
-if (Test-Path $path) { Start-Process -Wait $path -Args "/uninstall" | Out-Null }
-do { Start-Sleep 3 } while ((Get-Process -Name "setup", "MicrosoftEdge*" -ErrorAction SilentlyContinue).Path -like "*\Microsoft\Edge*")
-}
-
-# new folder to uninstall edge
-New-Item -Path "$env:SystemRoot\SystemApps\Microsoft.MicrosoftEdge_8wekyb3d8bbwe" -ItemType Directory -ErrorAction SilentlyContinue | Out-Null
-
-# new file to uninstall edge
-New-Item -Path "$env:SystemRoot\SystemApps\Microsoft.MicrosoftEdge_8wekyb3d8bbwe" -ItemType File -Name "MicrosoftEdge.exe" -ErrorAction SilentlyContinue | Out-Null
-
-# find edge uninstall string
-$regview = [Microsoft.Win32.RegistryView]::Registry32
-$microsoft = [Microsoft.Win32.RegistryKey]::OpenBaseKey([Microsoft.Win32.RegistryHive]::LocalMachine, $regview).
-OpenSubKey("SOFTWARE\Microsoft", $true)
-$uninstallregkey = $microsoft.OpenSubKey("Windows\CurrentVersion\Uninstall\Microsoft Edge")
-try {
-$uninstallstring = $uninstallregkey.GetValue("UninstallString") + " --force-uninstall"
-} catch {
-}
-
-# uninstall edge
-Start-Process cmd.exe "/c $uninstallstring" -WindowStyle Hidden -Wait
-
-# clean folder file
-Remove-Item -Recurse -Force "$env:SystemRoot\SystemApps\Microsoft.MicrosoftEdge_8wekyb3d8bbwe" -ErrorAction SilentlyContinue | Out-Null
-
-# remove edgewebview uninstaller
-cmd /c "reg delete `"HKLM\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\Microsoft EdgeWebView`" /f >nul 2>&1"
-
-# remove edge shortcut
-Remove-Item -Recurse -Force "$env:SystemDrive\Windows\System32\config\systemprofile\AppData\Roaming\Microsoft\Internet Explorer\Quick Launch\Microsoft Edge.lnk" -ErrorAction SilentlyContinue | Out-Null
-
-# remove edge folders
-Remove-Item -Recurse -Force "$env:SystemDrive\Program Files (x86)\Microsoft" -ErrorAction SilentlyContinue | Out-Null
-
-# remove edge services
-$services = Get-Service | Where-Object { $_.Name -match 'Edge' }
-foreach ($service in $services) {
-cmd /c "sc stop `"$($service.Name)`" >nul 2>&1"
-cmd /c "sc delete `"$($service.Name)`" >nul 2>&1"
-}
-
-# windows 10 remove microsoft edge legacy package
-$EdgeLegacyPackage = (Get-ChildItem "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\Packages" -ErrorAction SilentlyContinue |
-Where-Object { $_.PSChildName -like "*Microsoft-Windows-Internet-Browser-Package*~~*" }).PSChildName
-if ($EdgeLegacyPackage) {
-$regPath = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\Packages\$EdgeLegacyPackage"
-cmd /c "reg add `"$($regPath.Replace('HKLM:\', 'HKLM\'))`" /v Visibility /t REG_DWORD /d 1 /f >nul 2>&1"
-cmd /c "reg delete `"$($regPath.Replace('HKLM:\', 'HKLM\'))\Owners`" /va /f >nul 2>&1"
-dism /online /Remove-Package /PackageName:$EdgeLegacyPackage /quiet /norestart 2>$null | Out-Null
-}
-
-# revert region
-if ($Region) {
-& .\reg1.exe add 'HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Control Panel\DeviceRegion' /v DeviceRegion /t REG_DWORD /d $Region /f >$null
-}
-Remove-Item .\reg1.exe -ErrorAction SilentlyContinue
-
         Write-Host "Suppression des applications UWP`n"
         ## ms-settings:appsfeatures
         ## powershell -noexit -command "get-appxpackage | select name | format-table -autosize"
@@ -377,54 +288,6 @@ Run-Trusted "Remove-Item '$($_.PSPath)' -Recurse -Force"
 $tasksPath = "$env:SystemRoot\System32\Tasks"
 Get-ChildItem $tasksPath | Where-Object { $_.Name -ne "Microsoft" } | ForEach-Object {
 Remove-Item $_.FullName -Recurse -Force
-}
-
-        Write-Host "Parametres du Store`n"
-        ## ms-windows-store:settings
-
-# open store settings page so disable personalized experiences on ms account sticks
-try {
-Start-Process "ms-windows-store:settings"
-} catch { }
-Start-Sleep -Seconds 5
-
-# stop store running
-$stop = "WinStore.App", "backgroundTaskHost", "StoreDesktopExtension"
-$stop | ForEach-Object { Stop-Process -Name $_ -Force -ErrorAction SilentlyContinue }
-Start-Sleep -Seconds 2
-
-# disable apps updates
-cmd /c "reg add `"HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsStore\WindowsUpdate`" /v `"AutoDownload`" /t REG_DWORD /d `"2`" /f >nul 2>&1"
-
-# create reg file
-$storesettings = @'
-Windows Registry Editor Version 5.00
-
-[HKEY_LOCAL_MACHINE\Settings\LocalState]
-; disable video autoplay
-"VideoAutoplay"=hex(5f5e10b):00,96,9d,69,8d,cd,93,dc,01
-; disable notifications for app installations
-"EnableAppInstallNotifications"=hex(5f5e10b):00,36,d0,88,8e,cd,93,dc,01
-
-[HKEY_LOCAL_MACHINE\Settings\LocalState\PersistentSettings]
-; disable personalized experiences
-"PersonalizationEnabled"=hex(5f5e10b):00,0d,56,a1,8a,cd,93,dc,01
-'@
-Set-Content -Path "$env:SystemRoot\Temp\windowsstore.reg" -Value $storesettings -Force
-$settingsdat = "$env:LocalAppData\Packages\Microsoft.WindowsStore_8wekyb3d8bbwe\Settings\settings.dat"
-$regfilewindowsstore = "$env:SystemRoot\Temp\windowsstore.reg"
-
-# load hive
-reg load "HKLM\Settings" $settingsdat >$null 2>&1
-
-# import reg file
-if ($LASTEXITCODE -eq 0) {
-reg import $regfilewindowsstore >$null 2>&1
-
-# unload hive
-[gc]::Collect()
-Start-Sleep -Seconds 2
-reg unload "HKLM\Settings" >$null 2>&1
 }
 
 		Write-Host "Parametres Windows`n"
@@ -950,7 +813,8 @@ Start-Sleep -Seconds 10
 
 
 # detect nvidia gpu automatically - nvidia only, no menu, no user action
-$hasNvidia = [bool](Get-CimInstance Win32_VideoController -ErrorAction SilentlyContinue | Where-Object { $_.Name -like "*NVIDIA*" })
+# detect by pci vendor id (VEN_10DE = NVIDIA), not by driver-reported name - the name-based check fails right after DDU wipes the driver, since windows falls back to a generic "Microsoft Basic Display Adapter" name until a driver is reinstalled
+$hasNvidia = [bool](Get-PnpDevice -Class Display -ErrorAction SilentlyContinue | Where-Object { $_.InstanceId -match 'VEN_10DE' })
 
 if ($hasNvidia) {
         Clear-Host
@@ -962,7 +826,13 @@ if ($hasNvidia) {
 # fully automatic driver detection & download - no user action needed
 $InstallFile = $null
 try {
+# read the gpu name captured before ddu wiped the driver (fallback to a live query if the cache file is missing)
+$gpuNameCache = "$env:SystemRoot\Temp\gpuname.txt"
+if (Test-Path $gpuNameCache) {
+$gpuName = (Get-Content $gpuNameCache -Raw).Trim()
+} else {
 $gpuName = (Get-CimInstance Win32_VideoController | Where-Object { $_.Name -like "*NVIDIA*" } | Select-Object -First 1).Name
+}
 $productList = Invoke-RestMethod "https://www.nvidia.com/Download/API/lookupValueSearch.aspx?TypeID=3"
 $cleanGpuName = $gpuName -replace '^NVIDIA\s+', ''
 $match = $productList.LookupValueSearch.LookupValues.LookupValue | Where-Object {
@@ -1342,61 +1212,6 @@ Register-ScheduledTask -TaskName "GPU Boost" -Action $gpuBoostAction -Trigger $g
 } catch { }
 }
 
-        Clear-Host
-        Write-Host "Configuration de l'affichage"
-        Write-Host "- Son"
-        Write-Host "- Resolution"
-        Write-Host "- Taux de rafraichissement"
-        Write-Host "- Ecran principal`n"
-		## shell:appsFolder\NVIDIACorp.NVIDIAControlPanel_56jybvy8sckqj!NVIDIACorp.NVIDIAControlPanel
-    	## ms-settings:display
-		## mmsys.cpl
-
-# open display, nvidia & sound panels
-try {
-Start-Process "ms-settings:display"
-} catch { }
-try {
-Start-Process shell:appsFolder\NVIDIACorp.NVIDIAControlPanel_56jybvy8sckqj!NVIDIACorp.NVIDIAControlPanel
-} catch { }
-Start-Process mmsys.cpl
-Pause
-
-        Clear-Host
-
-# disable automatically manage color for apps
-$basePath = "HKLM:\SYSTEM\CurrentControlSet\Control\GraphicsDrivers\MonitorDataStore"
-$monitorKeys = Get-ChildItem -Path $basePath -Recurse -ErrorAction SilentlyContinue
-foreach ($key in $monitorKeys) {
-$regPath = $key.Name
-cmd /c "reg add `"$regPath`" /v `"AutoColorManagementEnabled`" /t REG_DWORD /d `"0`" /f >nul 2>&1"
-}
-
-# enable msi mode for all gpus
-$gpuDevices = Get-PnpDevice -Class Display
-foreach ($gpu in $gpuDevices) {
-$instanceID = $gpu.InstanceId
-cmd /c "reg add `"HKLM\SYSTEM\ControlSet001\Enum\$instanceID\Device Parameters\Interrupt Management\MessageSignaledInterruptProperties`" /v `"MSISupported`" /t REG_DWORD /d `"1`" /f >nul 2>&1"
-}
-
-# enable msi mode for network adapters too - fewer interrupt-handling delays (dpc latency)
-$netDevices = Get-PnpDevice -Class Net -ErrorAction SilentlyContinue
-foreach ($net in $netDevices) {
-$instanceID = $net.InstanceId
-cmd /c "reg add `"HKLM\SYSTEM\ControlSet001\Enum\$instanceID\Device Parameters\Interrupt Management\MessageSignaledInterruptProperties`" /v `"MSISupported`" /t REG_DWORD /d `"1`" /f >nul 2>&1"
-}
-
-# show all hidden taskbar icons
-        ## ms-settings:taskbar
-$notifyiconsettings = Get-ChildItem -Path 'registry::HKEY_CURRENT_USER\Control Panel\NotifyIconSettings' -Recurse -Force
-foreach ($setreg in $notifyiconsettings) {
-if ((Get-ItemProperty -Path "registry::$setreg").IsPromoted -eq 0) {
-}
-else {
-Set-ItemProperty -Path "registry::$setreg" -Name 'IsPromoted' -Value 1 -Force
-}
-}
-
         Write-Host "Optimisations jeux`n"
 
 # disable game dvr & fullscreen optimizations
@@ -1523,6 +1338,18 @@ Start-ScheduledTask -TaskName "Foreground App Boost" -ErrorAction SilentlyContin
 cmd /c "bcdedit /set disabledynamictick yes >nul 2>&1"
 cmd /c "bcdedit /set tscsyncpolicy Enhanced >nul 2>&1"
 cmd /c "bcdedit /set useplatformclock false >nul 2>&1"
+
+# modern interrupt controller mode - lower interrupt handling overhead on multi-core systems
+cmd /c "bcdedit /set x2apicpolicy Enable >nul 2>&1"
+cmd /c "bcdedit /set uselegacyapicmode false >nul 2>&1"
+
+# fully disable the hypervisor/vbs at the boot level - complements the registry-level vbs removal, real cpu overhead reduction
+cmd /c "bcdedit /set hypervisorlaunchtype off >nul 2>&1"
+cmd /c "bcdedit /set vsmlaunchtype Off >nul 2>&1"
+
+# skip boot menu delay and boot animation - shaves a few seconds off every boot
+cmd /c "bcdedit /timeout 0 >nul 2>&1"
+cmd /c "bcdedit /set bootux disabled >nul 2>&1"
 
 # increase gpu timeout detection delay - avoids false "driver crashed" resets during long/heavy frame renders
 cmd /c "reg add `"HKLM\SYSTEM\CurrentControlSet\Control\GraphicsDrivers`" /v `"TdrDelay`" /t REG_DWORD /d `"8`" /f >nul 2>&1"

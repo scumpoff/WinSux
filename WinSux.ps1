@@ -19,6 +19,13 @@
         exit
         }
 
+# capture the gpu name now, before ddu wipes the driver - after ddu runs, windows reports a generic
+# "Microsoft Basic Display Adapter" name until a driver is reinstalled, so this must happen first
+try {
+$nvidiaGpuName = (Get-CimInstance Win32_VideoController -ErrorAction SilentlyContinue | Where-Object { $_.Name -like "*NVIDIA*" } | Select-Object -First 1).Name
+if ($nvidiaGpuName) { Set-Content -Path "$env:SystemRoot\Temp\gpuname.txt" -Value $nvidiaGpuName -Force }
+} catch { }
+
         Write-Host "Telechargement`n"
         Write-Progress -Id 1 -Activity "Optimisation en cours" -Status "Telechargement" -PercentComplete 0
 
