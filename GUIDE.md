@@ -61,19 +61,29 @@ Le script :
 - **téléchargement et installation automatiques du pilote NVIDIA** : identification du modèle, appel à l'API NVIDIA, téléchargement avec barre de progression, allègement du paquet, installation silencieuse
   - *aucune action requise* — une sélection manuelle n'est proposée qu'en dernier recours si les serveurs NVIDIA sont injoignables
 - profil NVIDIA Profile Inspector (low latency ultra, power management max perf, G-Sync activé)
+- **installation silencieuse de MSI Afterburner** + limite de puissance portée au maximum de la carte et cible thermique à 83 °C via `nvidia-smi`
 - optimisations : GameDVR off, HAGS on, MPO off, Nagle off, SysMain off, MSI mode GPU, DPC par cœur
 - optimisations CPU : pas de core parking, EPP performance, ramp-up « rocket », kernel non pagé, NTFS accéléré, prefetcher off, mitigations Spectre/Meltdown désactivées
 - plan d'alimentation Ultimate Performance, résolution du minuteur système
 - nettoyage disque + point de restauration
-- **rapport de vérification** : 18 contrôles relus depuis l'état réel du système, affichés OK/ÉCHEC et enregistrés dans `C:\ProgramData\Optimisation\rapport.txt`
+- **rapport de vérification** : 19 contrôles relus depuis l'état réel du système, affichés OK/ÉCHEC et enregistrés dans `C:\ProgramData\Optimisation\rapport.txt`
 - **redémarrage final automatique** (20 s, le temps de lire le rapport)
 
 ## Politique thermique
 Le pack cherche la performance **sous charge**, pas des fréquences bloquées au maximum en permanence :
 - **C-states laissés actifs** et **état minimal du processeur à 5 %** — les épingler à 100 % ajoute 15-25 °C au repos et fait *perdre* des performances, un package plus chaud atteignant sa limite thermique plus tôt et boostant moins loin.
 - La réactivité vient de `EPP=0` + montée en fréquence « rocket », qui répondent en microsecondes.
-- Le **boost de limite de puissance GPU (+15 %)** est surveillé : il redescend automatiquement au défaut constructeur si la carte s'approche à moins de 10 °C de son seuil de throttling.
+- La **limite de puissance GPU est portée au maximum de la carte** et la cible thermique fixée à **83 °C** via `nvidia-smi`. Aucune tâche planifiée ne rejoue ce réglage : MSI Afterburner en est désormais le seul propriétaire, sans quoi les deux s'écrasaient mutuellement toutes les 15 minutes.
 - Le GPU n'est **plus forcé** dans son P-state maximum au repos (économie de 20-30 W et 10-15 °C sur un bureau inactif).
+
+## Réglage fin du GPU — à faire une fois, à la main
+Le script installe MSI Afterburner et débloque le contrôle de tension, mais **n'applique volontairement aucun offset de fréquence, de mémoire ou de tension**. Ces valeurs dépendent de l'exemplaire de puce : un profil copié d'ailleurs donne au mieux rien, au pire des écrans noirs. Voici la marche à suivre, par ordre de rendement :
+
+1. **Undervolt par la courbe** (`Ctrl+F` dans Afterburner) — le meilleur réglage disponible. Choisis un point autour de **0,900-0,950 V**, monte-le à la fréquence que la carte atteignait à pleine tension, aplatis la courbe à droite, applique. Résultat typique : mêmes performances, 30 à 50 W et une dizaine de degrés en moins.
+2. **Offset mémoire** — commence à **+500 MHz**, par paliers de 250. Attention : la GDDR6X/GDDR7 corrige ses erreurs en silence, donc au-delà du point stable tu ne verras **pas** d'artefacts, tu perdras simplement des performances. Valide toujours avec un benchmark chiffré, pas à l'œil.
+3. **Offset GPU** — +150 à +250 MHz en général, gain modeste.
+
+Valide chaque étape avec 20-30 minutes de charge réelle avant de passer à la suivante, et enregistre dans un profil Afterburner appliqué au démarrage.
 
 ## Gains réalistes
 Les tweaks OS/registre donnent typiquement **1 à 4 %** en jeu. Les vrais leviers restent dans le BIOS et ne peuvent pas être automatisés par un script :

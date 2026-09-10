@@ -1056,78 +1056,86 @@ Set-Content -Path "$env:SystemRoot\Temp\inspector.nip" -Value $nipfile -Force
 # import nip
 Start-Process -wait "$env:SystemRoot\Temp\inspector.exe" -ArgumentList "-silentImport -silent $env:SystemRoot\Temp\inspector.nip"
 
-# apply a light power limit boost adapted to the gpu (raises to the manufacturer's own default, never the extreme max, no clock/voltage overclock)
-# smart: only boosts on ac power (or desktops with no battery), re-checks periodically instead of a one-shot fixed value
+# ------------------------------------------------------------------
+# msi afterburner - silent install, and it becomes the single owner of gpu power/clocks
+# ------------------------------------------------------------------
+# the scheduled task that used to replay "nvidia-smi -pl" every 15 minutes is gone: two tools fighting
+# over the same power limit meant whichever ran last won, and any afterburner setting silently reverted
+# within the quarter hour. afterburner does the same job better (curve undervolt, fan curve, memory
+# offset) and applies its profile at startup on its own
+        Write-Host "Installation de MSI Afterburner`n"
+
+# remove the old scheduled task and its script if a previous run of this pack created them
+Unregister-ScheduledTask -TaskName "GPU Boost" -Confirm:$false -ErrorAction SilentlyContinue
+Remove-Item "$env:ProgramData\Optimisation\gpuboost.ps1" -Force -ErrorAction SilentlyContinue
+
+$afterburnerExe = "${env:ProgramFiles(x86)}\MSI Afterburner\MSIAfterburner.exe"
+if (-not (Test-Path $afterburnerExe)) {
 try {
-# permanent folder, NOT C:\Windows\Temp - the disk cleanup step at the end of this script wipes that folder,
-# which would delete the script the scheduled task depends on and silently kill the boost after reboot
-$persistentDir = "$env:ProgramData\Optimisation"
-New-Item -Path $persistentDir -ItemType Directory -Force -ErrorAction SilentlyContinue | Out-Null
-$gpuBoostScript = "$persistentDir\gpuboost.ps1"
-$gpuBoostScriptContent = @'
-Add-Type -AssemblyName System.Windows.Forms
-$hasBattery = Get-CimInstance -ClassName Win32_Battery -ErrorAction SilentlyContinue
-$onAC = (-not $hasBattery) -or ([System.Windows.Forms.SystemInformation]::PowerStatus.PowerLineStatus -eq 'Online')
+# nullsoft installer, so winget drives it fully silently. 4.6.6 is the stable build that carries
+# blackwell (rtx 50 series) support; the 4.6.7 beta is the fallback if the stable one does not
+# recognise the card
+Start-Process "winget" -ArgumentList "install --id Guru3D.Afterburner --exact --silent --accept-package-agreements --accept-source-agreements --disable-interactivity" -Wait -WindowStyle Hidden -ErrorAction SilentlyContinue
+} catch { }
+}
+
+if (Test-Path $afterburnerExe) {
+Write-Host "  MSI Afterburner installe`n"
+
+# stop it if the installer launched it - its settings file is rewritten on exit and would overwrite
+# anything written here
+Stop-Process -Name "MSIAfterburner" -Force -ErrorAction SilentlyContinue
+Start-Sleep -Seconds 2
+
+# baseline settings only: start with windows, minimised, apply the saved profile at startup, and unlock
+# voltage control so the curve editor (Ctrl+F) is actually usable.
+# deliberately NO clock, memory or voltage offsets are written here - see the note below
+$abConfig = "${env:ProgramFiles(x86)}\MSI Afterburner\Profiles\MSIAfterburner.cfg"
+if (Test-Path $abConfig) {
+$abLines = Get-Content $abConfig
+$abSettings = @{
+'StartupDelay'              = '30'
+'StartWithWindows'          = '1'
+'MinimizeOnStartup'         = '1'
+'MinimizeToTray'            = '1'
+'ShowTrayIcon'              = '1'
+'UnofficialOverclockingEULA'= 'I confirm that I am aware of unofficial overclocking limitations and fully understand that MSI will not provide me any support on it'
+'UnofficialOverclockingMode'= '1'
+'EnableVoltageControl'      = '1'
+'EnableVoltageMonitoring'   = '1'
+'EnableLowLevelIO'          = '1'
+}
+foreach ($key in $abSettings.Keys) {
+$value = $abSettings[$key]
+if ($abLines -match "^$key=") {
+$abLines = $abLines -replace "^$key=.*", "$key=$value"
+} else {
+# append into the [Settings] section
+$idx = [array]::IndexOf($abLines, ($abLines | Where-Object { $_ -eq '[Settings]' } | Select-Object -First 1))
+if ($idx -ge 0) { $abLines = $abLines[0..$idx] + "$key=$value" + $abLines[($idx+1)..($abLines.Count-1)] }
+}
+}
+Set-Content -Path $abConfig -Value $abLines -Force -ErrorAction SilentlyContinue
+Write-Host "  Profil de base ecrit (demarrage avec Windows, controle de tension debloque)`n"
+}
+
+# the safe half of the tuning, applied through nvidia-smi where it can be verified rather than guessed:
+# raise the power limit to the card's own maximum and hold the thermal target at 83 C. no clocks, no
+# voltages - those are per-chip and have to be dialled in by hand in afterburner's curve editor
+try {
 $powerReport = & nvidia-smi -q -d POWER 2>$null
-$currentLine = $powerReport | Select-String "Current Power Limit\s*:\s*([\d.]+)"
-$defaultLine = $powerReport | Select-String "Default Power Limit\s*:\s*([\d.]+)"
 $maxLine = $powerReport | Select-String "Max Power Limit\s*:\s*([\d.]+)"
-
-# thermal guard. the boost is only worth having while the card is not already close to its own
-# throttling point - past that, a higher power limit buys nothing and just adds heat and fan noise
-$gpuTemp = 0
-$slowdownTemp = 0
-try { $gpuTemp = [int]((& nvidia-smi --query-gpu=temperature.gpu --format=csv,noheader,nounits 2>$null) | Select-Object -First 1) } catch { }
-try {
-$thermalReport = & nvidia-smi -q -d TEMPERATURE 2>$null
-$slowLine = $thermalReport | Select-String "GPU Slowdown Temp\s*:\s*(\d+)"
-if ($slowLine) { $slowdownTemp = [int]$slowLine.Matches[0].Groups[1].Value }
-} catch { }
-# stay 10 degrees below the card's own slowdown threshold, or 80 C if it could not be read
-$tempCeiling = if ($slowdownTemp -gt 0) { $slowdownTemp - 10 } else { 80 }
-
-if ($currentLine -and $defaultLine -and $maxLine) {
-$currentLimit = [double]$currentLine.Matches[0].Groups[1].Value
-$defaultLimit = [double]$defaultLine.Matches[0].Groups[1].Value
-$maxLimit = [double]$maxLine.Matches[0].Groups[1].Value
-# light +15% boost above the manufacturer default, always capped by the card's own max power limit
-$boostTarget = [math]::Min($defaultLimit * 1.15, $maxLimit)
-
-if ($gpuTemp -gt 0 -and $gpuTemp -ge $tempCeiling -and $currentLimit -gt $defaultLimit) {
-# running hot: step back down to the manufacturer default and stop there
-& nvidia-smi -pl ([math]::Floor($defaultLimit)) 2>$null | Out-Null
-} elseif ($onAC -and $currentLimit -lt $boostTarget -and ($gpuTemp -eq 0 -or $gpuTemp -lt $tempCeiling)) {
-# progressive ramp in 4 steps instead of an instant jump, re-checking temperature between steps
-$steps = 4
-$stepSize = ($boostTarget - $currentLimit) / $steps
-for ($s = 1; $s -le $steps; $s++) {
-$stepTarget = [math]::Floor($currentLimit + ($stepSize * $s))
-& nvidia-smi -pl $stepTarget 2>$null | Out-Null
-Start-Sleep -Seconds 3
-try {
-$t = [int]((& nvidia-smi --query-gpu=temperature.gpu --format=csv,noheader,nounits 2>$null) | Select-Object -First 1)
-if ($t -ge $tempCeiling) { & nvidia-smi -pl ([math]::Floor($defaultLimit)) 2>$null | Out-Null; break }
-} catch { }
+if ($maxLine) {
+$maxLimit = [math]::Floor([double]$maxLine.Matches[0].Groups[1].Value)
+& nvidia-smi -pl $maxLimit 2>$null | Out-Null
+Write-Host "  Limite de puissance portee a $maxLimit W`n"
 }
-} elseif (-not $onAC -and $currentLimit -gt $defaultLimit) {
-& nvidia-smi -pl ([math]::Floor($defaultLimit)) 2>$null | Out-Null
-}
-}
-'@
-Set-Content -Path $gpuBoostScript -Value $gpuBoostScriptContent -Force
-
-# run once now, then keep re-checking (at logon, at startup, and every 15 min while logged in) so it reacts to plugging/unplugging
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File $gpuBoostScript
-
-$gpuBoostAction = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$gpuBoostScript`""
-$gpuBoostTriggers = @(
-(New-ScheduledTaskTrigger -AtLogOn),
-(New-ScheduledTaskTrigger -AtStartup),
-(New-ScheduledTaskTrigger -Once -At (Get-Date) -RepetitionInterval (New-TimeSpan -Minutes 15) -RepetitionDuration (New-TimeSpan -Days 3650))
-)
-$gpuBoostPrincipal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -RunLevel Highest
-Register-ScheduledTask -TaskName "GPU Boost" -Action $gpuBoostAction -Trigger $gpuBoostTriggers -Principal $gpuBoostPrincipal -Force -ErrorAction SilentlyContinue | Out-Null
+& nvidia-smi -gtt 83 2>$null | Out-Null
 } catch { }
+
+} else {
+Write-Host "  Installation de MSI Afterburner echouee - etape ignoree`n"
+}
 }
 
         Write-Progress -Id 1 -Activity "Optimisation en cours" -Status "Optimisations jeux" -PercentComplete 54
@@ -1219,7 +1227,8 @@ cmd /c "reg add `"HKLM\SYSTEM\CurrentControlSet\Control\PriorityControl`" /v `"W
 
 # persistent foreground app process priority booster - whatever app has focus (the game) gets bumped to High
 try {
-# permanent folder, NOT C:\Windows\Temp - see the same note on the gpu boost script above
+# permanent folder, NOT C:\Windows\Temp - the disk cleanup step at the end of this script wipes that
+# folder, which would delete the script the scheduled task depends on
 $persistentDir = "$env:ProgramData\Optimisation"
 New-Item -Path $persistentDir -ItemType Directory -Force -ErrorAction SilentlyContinue | Out-Null
 $boosterScript = "$persistentDir\foregroundboost.ps1"
@@ -1847,7 +1856,8 @@ Add-Check "Etat processeur minimum <= 10% (idle sain)" { (Get-PowerAC '54533251-
 Add-Check "Etat processeur maximum = 100%" { (Get-PowerAC '54533251-82be-4824-96c1-47b60b740d00' 'bc5038f7-23e0-4960-96da-33abaf5935ec' 100) -eq 100 }
 Add-Check "Veille processeur (C-states) active" { (Get-PowerAC '54533251-82be-4824-96c1-47b60b740d00' '5d76a2ca-e8c0-402f-a133-2158492d58ad' 0) -eq 0 }
 Add-Check "Core parking desactive" { (Get-PowerAC '54533251-82be-4824-96c1-47b60b740d00' '0cc5b647-c1df-4637-891a-dec35c318583' 100) -eq 100 }
-Add-Check "Tache GPU Boost enregistree" { (Get-ScheduledTask -TaskName 'GPU Boost' -ErrorAction SilentlyContinue) -ne $null }
+Add-Check "MSI Afterburner installe" { Test-Path "${env:ProgramFiles(x86)}\MSI Afterburner\MSIAfterburner.exe" }
+Add-Check "Aucune tache concurrente sur la limite GPU" { (Get-ScheduledTask -TaskName 'GPU Boost' -ErrorAction SilentlyContinue) -eq $null }
 Add-Check "Tache Foreground App Boost active" { (Get-ScheduledTask -TaskName 'Foreground App Boost' -ErrorAction SilentlyContinue) -ne $null }
 Add-Check "SysMain / DiagTrack desactives" { ((Get-Service SysMain -ErrorAction SilentlyContinue).StartType -eq 'Disabled') -and ((Get-Service DiagTrack -ErrorAction SilentlyContinue).StartType -eq 'Disabled') }
 Add-Check "Reseau: Nagle desactive" { (Get-ChildItem 'HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\Interfaces' | ForEach-Object { (Get-ItemProperty $_.PSPath -Name TCPNoDelay -ErrorAction SilentlyContinue).TCPNoDelay }) -contains 1 }
