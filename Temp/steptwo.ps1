@@ -53,6 +53,11 @@ function Write-Info([string]$label) {
 Write-Host ("        " + $label) -ForegroundColor DarkGray
 }
 
+# full transcript of the run. without it the console output scrolls past and the machine reboots, so a
+# failure in the middle of a 15 minute unattended pass leaves nothing behind to look at
+New-Item -Path "$env:ProgramData\Optimisation" -ItemType Directory -Force -ErrorAction SilentlyContinue | Out-Null
+try { Start-Transcript -Path "$env:ProgramData\Optimisation\journal-phase3.txt" -Force -ErrorAction SilentlyContinue | Out-Null } catch { }
+
 Write-Banner
 
 
@@ -970,24 +975,13 @@ $nipfile = @'
         <SettingValue>0</SettingValue>
         <ValueType>Dword</ValueType>
       </ProfileSetting>
-      <ProfileSetting>
-        <SettingNameInfo>rBAR - Feature</SettingNameInfo>
-        <SettingID>983226</SettingID>
-        <SettingValue>1</SettingValue>
-        <ValueType>Dword</ValueType>
-      </ProfileSetting>
-      <ProfileSetting>
-        <SettingNameInfo>rBAR - Options</SettingNameInfo>
-        <SettingID>983227</SettingID>
-        <SettingValue>1</SettingValue>
-        <ValueType>Dword</ValueType>
-      </ProfileSetting>
-      <ProfileSetting>
-        <SettingNameInfo>rBAR - Size Limit</SettingNameInfo>
-        <SettingID>983295</SettingID>
-        <SettingValue>17179869184</SettingValue>
-        <ValueType>Qword</ValueType>
-      </ProfileSetting>
+      <!-- the three rBAR settings that used to sit here have been removed.
+           they were the one part of this profile whose numeric setting IDs came from community
+           profiles rather than from NVIDIA, and the "Size Limit" entry was declared as Qword, a value
+           type NVIDIA Profile Inspector does not accept. Importing it crashed the tool, which meant
+           the ENTIRE profile failed to apply - every other setting in this file included.
+           Force Resizable BAR by hand instead: inspector.exe, section "5 - Common", where the tool
+           validates the values itself. -->
       <ProfileSetting>
         <SettingNameInfo>Vertical Sync</SettingNameInfo>
         <SettingID>11041231</SettingID>
@@ -2003,7 +1997,14 @@ while ($true) {
   }
   $i++
 }
-$log | Set-Content -Path "$env:ProgramData\Optimisation\ecrans.txt" -Force
+if ($i -eq 0) {
+  # EnumDisplayDevices returned nothing on the very first call. that happens when the process has no
+  # window station - a scheduled task running before the session is fully up, for instance
+  $log += "Aucun ecran enumere (erreur Win32 " + [Runtime.InteropServices.Marshal]::GetLastWin32Error() + "). Relancez depuis le dossier Entretien PC."
+}
+# ALWAYS write the file, even when nothing was collected. piping an empty array into Set-Content
+# writes nothing at all and leaves no file, which is how this step failed in complete silence
+Set-Content -Path "$env:ProgramData\Optimisation\ecrans.txt" -Value ($log -join [Environment]::NewLine) -Force
 $log | ForEach-Object { Write-Host $_ }
 '@
 Set-Content -Path $refreshScript -Value $refreshContent -Force
@@ -2282,6 +2283,9 @@ $log | Set-Content -Path $logFile -Force -Encoding UTF8
 Write-Info "Journal : $logFile"
 
         Write-Host "Redemarrage dans 20 secondes`n"
+
+# close the transcript before the machine goes down, otherwise the tail of the run is never flushed
+try { Stop-Transcript -ErrorAction SilentlyContinue | Out-Null } catch { }
 
 # restart - long enough to actually read the report before the machine goes down
 Start-Sleep -Seconds 20
