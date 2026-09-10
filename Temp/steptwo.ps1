@@ -1399,6 +1399,14 @@ cmd /c "reg add `"HKCU\System\GameConfigStore`" /v `"GameDVR_FSEBehavior`" /t RE
 cmd /c "reg add `"HKCU\System\GameConfigStore`" /v `"GameDVR_HonorUserFSEBehaviorMode`" /t REG_DWORD /d `"1`" /f >nul 2>&1"
 cmd /c "reg add `"HKLM\SOFTWARE\Policies\Microsoft\Windows\GameDVR`" /v `"AllowGameDVR`" /t REG_DWORD /d `"0`" /f >nul 2>&1"
 
+# explicitly ensure game mode (background task deprioritization during games) stays on
+cmd /c "reg add `"HKCU\Software\Microsoft\GameBar`" /v `"AutoGameModeEnabled`" /t REG_DWORD /d `"1`" /f >nul 2>&1"
+cmd /c "reg add `"HKCU\Software\Microsoft\GameBar`" /v `"AllowAutoGameMode`" /t REG_DWORD /d `"1`" /f >nul 2>&1"
+
+# disable windows error reporting service - crash dumps still saved locally, just not processed/sent
+cmd /c "sc stop `"WerSvc`" >nul 2>&1"
+cmd /c "sc config `"WerSvc`" start= disabled >nul 2>&1"
+
 # enable hardware-accelerated gpu scheduling
 cmd /c "reg add `"HKLM\SYSTEM\CurrentControlSet\Control\GraphicsDrivers`" /v `"HwSchMode`" /t REG_DWORD /d `"2`" /f >nul 2>&1"
 
