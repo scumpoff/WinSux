@@ -12,8 +12,6 @@
         Write-Host "   Optimisation par ELIAS"
         Write-Host "========================================`n"
 
-        # SCRIPT SILENT
-        $progresspreference = 'silentlycontinue'
 
         # FUNCTION RUN AS TRUSTED INSTALLER
         function Run-Trusted([String]$command) {
@@ -41,6 +39,7 @@
     	taskkill /im trustedinstaller.exe /f >$null
   		}
         }
+        Write-Progress -Id 1 -Activity "Optimisation en cours" -Status "Suppression des applications UWP" -PercentComplete 6
         Write-Host "Suppression des applications UWP`n"
         ## ms-settings:appsfeatures
         ## powershell -noexit -command "get-appxpackage | select name | format-table -autosize"
@@ -80,6 +79,7 @@ $app | Remove-AppxPackage -ErrorAction SilentlyContinue
 }
 Write-Progress -Activity "Suppression des applications UWP" -Completed
 
+        Write-Progress -Id 1 -Activity "Optimisation en cours" -Status "Suppression des fonctionnalites UWP" -PercentComplete 13
         Write-Host "Suppression des fonctionnalites UWP`n"
         ## ms-settings:optionalfeatures
         ## powershell -noexit -command "dism /online /get-capabilities /format:table"
@@ -111,6 +111,7 @@ Remove-WindowsCapability -Online -Name $cap.Name | Out-Null
 }
 Write-Progress -Activity "Suppression des fonctionnalites UWP" -Completed
 
+        Write-Progress -Id 1 -Activity "Optimisation en cours" -Status "Suppression des fonctionnalites heritees" -PercentComplete 19
         Write-Host "Suppression des fonctionnalites heritees`n"
         ## c:\windows\system32\optionalfeatures.exe
 		## powershell -noexit -command "dism /online /get-features /format:table"
@@ -152,6 +153,7 @@ Disable-WindowsOptionalFeature -Online -FeatureName $feature.FeatureName -NoRest
 }
 Write-Progress -Activity "Suppression des fonctionnalites heritees" -Completed
 
+		Write-Progress -Id 1 -Activity "Optimisation en cours" -Status "Suppression des applications heritees" -PercentComplete 25
 		Write-Host "Suppression des applications heritees`n"
 		## appwiz.cpl
 
@@ -290,6 +292,7 @@ Get-ChildItem $tasksPath | Where-Object { $_.Name -ne "Microsoft" } | ForEach-Ob
 Remove-Item $_.FullName -Recurse -Force
 }
 
+		Write-Progress -Id 1 -Activity "Optimisation en cours" -Status "Parametres Windows" -PercentComplete 31
 		Write-Host "Parametres Windows`n"
 		## regedit
 		## control
@@ -819,6 +822,7 @@ $hasNvidia = [bool](Get-PnpDevice -Class Display -ErrorAction SilentlyContinue |
 if ($hasNvidia) {
         Clear-Host
 
+        Write-Progress -Id 1 -Activity "Optimisation en cours" -Status "Telechargement du pilote GPU Nvidia" -PercentComplete 38
         Write-Host "Telechargement du pilote GPU Nvidia`n"
     	## explorer "https://www.nvidia.com/en-us/drivers"
 		## shell:appsFolder\NVIDIACorp.NVIDIAControlPanel_56jybvy8sckqj!NVIDIACorp.NVIDIAControlPanel
@@ -867,6 +871,7 @@ Start-Process "https://www.nvidia.com/en-us/drivers"
 Pause
 Clear-Host
 
+        Write-Progress -Id 1 -Activity "Optimisation en cours" -Status "Selection du pilote" -PercentComplete 44
         Write-Host "Selectionnez le pilote telecharge`n"
 
 Start-Sleep -Seconds 5
@@ -877,6 +882,7 @@ $Dialog.ShowDialog() | Out-Null
 $InstallFile = $Dialog.FileName
 }
 
+        Write-Progress -Id 1 -Activity "Optimisation en cours" -Status "Allegement du pilote" -PercentComplete 50
         Write-Host "Allegement du pilote`n"
 
 # extract driver with 7zip
@@ -897,6 +903,7 @@ Remove-Item "$env:SystemRoot\Temp\nvidiadriver\$item" -Recurse -Force -ErrorActi
 }
 Write-Progress -Activity "Allegement du pilote" -Completed
 
+        Write-Progress -Id 1 -Activity "Optimisation en cours" -Status "Installation du pilote" -PercentComplete 56
         Write-Host "Installation du pilote`n"
 
 # install nvidia driver
@@ -916,6 +923,7 @@ Remove-Item "$InstallFile" -Force -ErrorAction SilentlyContinue | Out-Null
 # delete old driver files
 Remove-Item "$env:SystemDrive\NVIDIA" -Recurse -Force -ErrorAction SilentlyContinue | Out-Null
 
+        Write-Progress -Id 1 -Activity "Optimisation en cours" -Status "Importation des parametres" -PercentComplete 63
         Write-Host "Importation des parametres`n"
 
 # turn on disable dynamic pstate
@@ -1212,6 +1220,7 @@ Register-ScheduledTask -TaskName "GPU Boost" -Action $gpuBoostAction -Trigger $g
 } catch { }
 }
 
+        Write-Progress -Id 1 -Activity "Optimisation en cours" -Status "Optimisations jeux" -PercentComplete 69
         Write-Host "Optimisations jeux`n"
 
 # disable game dvr & fullscreen optimizations
@@ -1366,6 +1375,7 @@ cmd /c "sc config `"PcaSvc`" start= disabled >nul 2>&1"
 # disable storage sense - stops unpredictable background disk scans/cleanup that can interfere with the manual cleanup already done
 cmd /c "reg add `"HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\StorageSense\Parameters\StoragePolicy`" /v `"01`" /t REG_DWORD /d `"0`" /f >nul 2>&1"
 
+        Write-Progress -Id 1 -Activity "Optimisation en cours" -Status "Peripheriques et audio" -PercentComplete 75
         Write-Host "Peripheriques et audio`n"
 
 # disable mouse pointer acceleration (raw input, no smoothing)
@@ -1410,6 +1420,7 @@ New-CimInstance -ClassName Win32_PageFileSetting -Property @{Name="C:\pagefile.s
 cmd /c "sc stop `"DiagTrack`" >nul 2>&1"
 cmd /c "sc config `"DiagTrack`" start= disabled >nul 2>&1"
 
+        Write-Progress -Id 1 -Activity "Optimisation en cours" -Status "Mode d'alimentation" -PercentComplete 81
         Write-Host "Mode d'alimentation`n"
         ## powercfg.cpl
 
@@ -1632,6 +1643,7 @@ powercfg /setdcvalueindex 99999999-9999-9999-9999-999999999999 de830923-a562-41a
 powercfg /setacvalueindex 99999999-9999-9999-9999-999999999999 de830923-a562-41af-a086-e3a2c6bad2da e69653ca-cf7f-4f05-aa73-cb833fa90ad4 0x00000000 2>$null
 powercfg /setdcvalueindex 99999999-9999-9999-9999-999999999999 de830923-a562-41af-a086-e3a2c6bad2da e69653ca-cf7f-4f05-aa73-cb833fa90ad4 0x00000000 2>$null
 
+        Write-Progress -Id 1 -Activity "Optimisation en cours" -Status "Resolution du minuteur" -PercentComplete 88
         Write-Host "Resolution du minuteur`n"
         ## services.msc
 
@@ -1663,6 +1675,7 @@ cmd /c "cd /d %systemroot%\sysWOW64 && lodctr /R >nul 2>&1"
 Get-AppxPackage -allusers *MSTeams* | Remove-AppxPackage -ErrorAction SilentlyContinue
 Get-AppxPackage -allusers *Microsoft.OutlookForWindows* | Remove-AppxPackage -ErrorAction SilentlyContinue
 
+		Write-Progress -Id 1 -Activity "Optimisation en cours" -Status "Nettoyage de disque" -PercentComplete 94
 		Write-Host "Nettoyage de disque`n"
 		## cleanmgr.exe
 		## %temp%
@@ -1705,6 +1718,7 @@ Remove-Item "$env:SystemDrive\XboxGames" -Recurse -Force -ErrorAction SilentlyCo
 Remove-Item "$env:SystemDrive\Windows.old" -Recurse -Force -ErrorAction SilentlyContinue | Out-Null
 Remove-Item "$env:SystemDrive\DumpStack.log" -Force -ErrorAction SilentlyContinue | Out-Null
 
+        Write-Progress -Id 1 -Activity "Optimisation en cours" -Status "Point de restauration" -PercentComplete 98
         Write-Host "Point de restauration`n"
         ## c:\windows\system32\control.exe sysdm.cpl ,4
         ## rstrui
@@ -1724,6 +1738,8 @@ cmd /c "reg delete `"HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\SystemRes
 } catch { }
 
         Clear-Host
+        Write-Progress -Id 1 -Activity "Optimisation en cours" -Status "Termine" -PercentComplete 100
+        Write-Progress -Id 1 -Activity "Optimisation en cours" -Completed
         Write-Host "Toutes les optimisations ont ete appliquees avec succes`n"
         Write-Host "Redemarrage`n"
 
