@@ -1285,11 +1285,22 @@ $onAC = (-not $hasBattery) -or ([System.Windows.Forms.SystemInformation]::PowerS
 $powerReport = & nvidia-smi -q -d POWER 2>$null
 $currentLine = $powerReport | Select-String "Current Power Limit\s*:\s*([\d.]+)"
 $defaultLine = $powerReport | Select-String "Default Power Limit\s*:\s*([\d.]+)"
-if ($currentLine -and $defaultLine) {
+$maxLine = $powerReport | Select-String "Max Power Limit\s*:\s*([\d.]+)"
+if ($currentLine -and $defaultLine -and $maxLine) {
 $currentLimit = [double]$currentLine.Matches[0].Groups[1].Value
 $defaultLimit = [double]$defaultLine.Matches[0].Groups[1].Value
-if ($onAC -and $currentLimit -lt $defaultLimit) {
-& nvidia-smi -pl ([math]::Floor($defaultLimit)) 2>$null | Out-Null
+$maxLimit = [double]$maxLine.Matches[0].Groups[1].Value
+# light +10% boost above the manufacturer default, always capped by the card's own max power limit
+$boostTarget = [math]::Min($defaultLimit * 1.1, $maxLimit)
+if ($onAC -and $currentLimit -lt $boostTarget) {
+# progressive ramp in 4 steps instead of an instant jump
+$steps = 4
+$stepSize = ($boostTarget - $currentLimit) / $steps
+for ($s = 1; $s -le $steps; $s++) {
+$stepTarget = [math]::Floor($currentLimit + ($stepSize * $s))
+& nvidia-smi -pl $stepTarget 2>$null | Out-Null
+Start-Sleep -Seconds 3
+}
 } elseif (-not $onAC -and $currentLimit -gt $defaultLimit) {
 & nvidia-smi -pl ([math]::Floor($defaultLimit)) 2>$null | Out-Null
 }
@@ -1859,6 +1870,11 @@ cmd /c "reg add `"HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Power`" 
 # disable power throttling
 cmd /c "reg add `"HKLM\SYSTEM\CurrentControlSet\Control\Power\PowerThrottling`" /v `"PowerThrottlingOff`" /t REG_DWORD /d `"1`" /f >nul 2>&1"
 
+# light cpu boost - aggressive turbo/boost mode within the cpu's own factory limits, no overclock
+cmd /c "powercfg /setacvalueindex scheme_current sub_processor PERFBOOSTMODE 2 >nul 2>&1"
+cmd /c "powercfg /setdcvalueindex scheme_current sub_processor PERFBOOSTMODE 2 >nul 2>&1"
+cmd /c "powercfg /setactive scheme_current >nul 2>&1"
+
 # modify desktop & laptop settings
 # hard disk turn off hard disk after 0%
 powercfg /setacvalueindex 99999999-9999-9999-9999-999999999999 0012ee47-9041-4b5d-9b77-535fba8b1442 6738e2c4-e8a5-4a42-b16a-e040e769756e 0x00000000 2>$null
@@ -2060,6 +2076,27 @@ Get-AppxPackage -allusers *Microsoft.OutlookForWindows* | Remove-AppxPackage -Er
 		## cleanmgr.exe
 		## %temp%
 		## temp
+
+# remove non-present ("ghost") devices left behind by old/removed hardware
+try {
+Get-PnpDevice -ErrorAction SilentlyContinue | Where-Object { -not $_.Present } | ForEach-Object {
+cmd /c "pnputil /remove-device `"$($_.InstanceId)`" >nul 2>&1"
+}
+} catch { }
+
+# clear windows update download cache
+Stop-Service -Name wuauserv -Force -ErrorAction SilentlyContinue
+Remove-Item -Path "$env:SystemRoot\SoftwareDistribution\Download\*" -Recurse -Force -ErrorAction SilentlyContinue | Out-Null
+Start-Service -Name wuauserv -ErrorAction SilentlyContinue
+
+# clear prefetch
+Remove-Item -Path "$env:SystemRoot\Prefetch\*" -Recurse -Force -ErrorAction SilentlyContinue | Out-Null
+
+# clear thumbnail cache
+Remove-Item -Path "$env:LOCALAPPDATA\Microsoft\Windows\Explorer\thumbcache_*.db" -Force -ErrorAction SilentlyContinue | Out-Null
+
+# empty recycle bin
+Clear-RecycleBin -Force -ErrorAction SilentlyContinue
 
 # clear %temp% folder
 Remove-Item -Path "$env:USERPROFILE\AppData\Local\Temp\*" -Recurse -Force -ErrorAction SilentlyContinue | Out-Null
