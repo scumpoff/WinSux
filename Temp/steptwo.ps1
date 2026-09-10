@@ -381,6 +381,25 @@ cmd /c "reg add `"HKLM\SYSTEM\ControlSet001\Services\CDPUserSvc`" /v `"Start`" /
 # import steptwo reg file
 Start-Process -Wait "regedit.exe" -ArgumentList "/S `"$env:SystemRoot\Temp\reg.reg`"" -WindowStyle Hidden
 
+# undo the forced 100% dpi scaling left behind by earlier versions of this pack.
+# dropping the lines from reg.reg only stops them being written again - a machine that already ran an
+# older version keeps LogPixels=96 forever and stays stuck at 100% scaling, so delete the values outright
+# and let windows go back to the scaling it recommends for the detected panel
+cmd /c "reg delete `"HKCU\Control Panel\Desktop`" /v `"LogPixels`" /f >nul 2>&1"
+cmd /c "reg delete `"HKCU\Control Panel\Desktop`" /v `"Win8DpiScaling`" /f >nul 2>&1"
+cmd /c "reg delete `"HKCU\SOFTWARE\Microsoft\Windows\DWM`" /v `"UseDpiScaling`" /f >nul 2>&1"
+
+# same problem for UserPreferencesMask: an older run wrote it as REG_EXPAND_SZ, and regedit will not
+# change the type of an existing value on import - it has to be deleted first so reg.reg can recreate
+# it as REG_BINARY. this runs before the import above on the next pass; delete and re-import now
+$upmKey = "HKCU:\Control Panel\Desktop"
+try {
+if ((Get-Item $upmKey).GetValueKind('UserPreferencesMask') -ne 'Binary') {
+cmd /c "reg delete `"HKCU\Control Panel\Desktop`" /v `"UserPreferencesMask`" /f >nul 2>&1"
+cmd /c "reg add `"HKCU\Control Panel\Desktop`" /v `"UserPreferencesMask`" /t REG_BINARY /d `"9012038010000000`" /f >nul 2>&1"
+}
+} catch { }
+
 # disable gamebarpresencewriter.exe
 Run-Trusted -command "reg add `"HKLM\SOFTWARE\Microsoft\WindowsRuntime\ActivatableClassId\Windows.Gaming.GameBar.PresenceServer.Internal.PresenceWriter`" /v `"ActivationType`" /t REG_DWORD /d `"0`" /f"
 
