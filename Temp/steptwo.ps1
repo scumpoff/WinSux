@@ -855,17 +855,44 @@ $osID = if ($osVersion.Build -ge 22000) { 135 } else { 57 }
 $driverInfo = Invoke-RestMethod "https://gfwsl.geforce.com/services_toolkit/services/com/nvidia/services/AjaxDriverService.php?func=DriverManualLookup&psid=$psid&pfid=$pfid&osID=$osID&languageCode=1033&beta=null&isWHQL=1&dltype=-1&dch=1&sort1=0&numberOfResults=1"
 $downloadUrl = $driverInfo.IDS[0].downloadInfo.DownloadURL
 if ($downloadUrl) {
-$InstallFile = "$env:SystemRoot\Temp\nvidia_driver_auto.exe"
-$oldProgressPreference = $ProgressPreference
-$ProgressPreference = 'SilentlyContinue'
-Invoke-WebRequest -Uri $downloadUrl -OutFile $InstallFile
-$ProgressPreference = $oldProgressPreference
+$candidateFile = "$env:SystemRoot\Temp\nvidia_driver_auto.exe"
+# real download progress via webclient events (Invoke-WebRequest's own bar is unusably slow in powershell 5.1)
+$webClient = New-Object System.Net.WebClient
+Register-ObjectEvent -InputObject $webClient -EventName DownloadProgressChanged -SourceIdentifier WinSuxDriverDownload.Progress | Out-Null
+Register-ObjectEvent -InputObject $webClient -EventName DownloadFileCompleted -SourceIdentifier WinSuxDriverDownload.Completed | Out-Null
+$webClient.DownloadFileAsync([Uri]$downloadUrl, $candidateFile)
+$downloadDone = $false
+$downloadOk = $false
+while (-not $downloadDone) {
+$progEvent = Wait-Event -SourceIdentifier WinSuxDriverDownload.Progress -Timeout 1
+if ($progEvent) {
+$percent = $progEvent.SourceEventArgs.ProgressPercentage
+$mbReceived = [math]::Round($progEvent.SourceEventArgs.BytesReceived / 1MB, 1)
+$mbTotal = [math]::Round($progEvent.SourceEventArgs.TotalBytesToReceive / 1MB, 1)
+Write-Progress -Id 2 -ParentId 1 -Activity "Telechargement du pilote NVIDIA" -Status "$mbReceived Mo / $mbTotal Mo ($percent%)" -PercentComplete $percent
+Remove-Event -SourceIdentifier WinSuxDriverDownload.Progress
+}
+$compEvent = Wait-Event -SourceIdentifier WinSuxDriverDownload.Completed -Timeout 0
+if ($compEvent) {
+$downloadDone = $true
+$downloadOk = -not $compEvent.SourceEventArgs.Cancelled -and -not $compEvent.SourceEventArgs.Error
+Remove-Event -SourceIdentifier WinSuxDriverDownload.Completed
+}
+}
+Unregister-Event -SourceIdentifier WinSuxDriverDownload.Progress -ErrorAction SilentlyContinue
+Unregister-Event -SourceIdentifier WinSuxDriverDownload.Completed -ErrorAction SilentlyContinue
+$webClient.Dispose()
+Write-Progress -Id 2 -Activity "Telechargement du pilote NVIDIA" -Completed
+if ($downloadOk -and (Test-Path $candidateFile) -and (Get-Item $candidateFile).Length -gt 100MB) {
+$InstallFile = $candidateFile
+}
 }
 }
 } catch { $InstallFile = $null }
 
-# fallback to manual download only if automatic detection/download failed
+# fallback to manual download only if automatic detection/download failed - tell the user why instead of silently switching
 if (-not $InstallFile -or -not (Test-Path $InstallFile)) {
+Write-Host "Le telechargement automatique du pilote a echoue, selection manuelle requise`n"
 Start-Sleep -Seconds 5
 Start-Process "https://www.nvidia.com/en-us/drivers"
 Pause
@@ -1469,13 +1496,9 @@ cmd /c "reg add `"HKLM\SYSTEM\CurrentControlSet\Control\Power\PowerThrottling`" 
 # cpu boost - aggressive-at-guaranteed mode: holds the cpu at its guaranteed boosted frequency more consistently, still within the cpu's own factory limits, no overclock
 cmd /c "powercfg /setacvalueindex scheme_current sub_processor PERFBOOSTMODE 5 >nul 2>&1"
 cmd /c "powercfg /setdcvalueindex scheme_current sub_processor PERFBOOSTMODE 5 >nul 2>&1"
-
-# disable core parking - forces all cores to stay fully awake instead of idling/parking, removes wake-up latency spikes
-# tradeoff: higher idle power draw and heat, always-on, same family as disabledynamictick above
-cmd /c "powercfg /setacvalueindex scheme_current sub_processor PROCTHROTTLEMIN 100 >nul 2>&1"
-cmd /c "powercfg /setdcvalueindex scheme_current sub_processor PROCTHROTTLEMIN 100 >nul 2>&1"
-
 cmd /c "powercfg /setactive scheme_current >nul 2>&1"
+
+# note: core parking / minimum processor state is already forced to 100% further down (processor power management section)
 
 # modify desktop & laptop settings
 # hard disk turn off hard disk after 0%
