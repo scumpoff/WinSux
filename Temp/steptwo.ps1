@@ -1747,13 +1747,27 @@ powercfg /setacvalueindex 99999999-9999-9999-9999-999999999999 501a4d13-42af-442
 powercfg /setdcvalueindex 99999999-9999-9999-9999-999999999999 501a4d13-42af-4429-9fd1-a8218c268e20 ee12f906-d277-404b-b6da-e5fa1a576df5 000 2>$null
 
 # processor power management
-# minimum processor state 5% - deliberately NOT 100%.
-# forcing 100% pins every core at its maximum multiplier permanently, including on an idle desktop:
-# 15-25 degrees of extra idle temperature, and on modern cpus it actively COSTS performance, because a
-# hotter package reaches its thermal/power limit sooner and boosts less far under real load.
-# with EPP 0 and the rocket ramp policy set earlier, the cpu still reaches full clocks in microseconds.
-powercfg /setacvalueindex 99999999-9999-9999-9999-999999999999 54533251-82be-4824-96c1-47b60b740d00 893dee8e-2bef-41e0-89c6-b55d0929964c 0x00000005 2>$null
-powercfg /setdcvalueindex 99999999-9999-9999-9999-999999999999 54533251-82be-4824-96c1-47b60b740d00 893dee8e-2bef-41e0-89c6-b55d0929964c 0x00000005 2>$null
+# minimum processor state - adapted to the chassis, because the right value is not the same on both:
+#
+#   laptop  -> 5%. pinning every core at its maximum multiplier permanently adds 15-25 degrees of idle
+#              temperature in a thin chassis, so the package starts hot and hits its thermal limit sooner
+#              under real load: it boosts LESS far and costs fps. with EPP 0 and the rocket ramp policy
+#              set earlier, the cpu still reaches full clocks in microseconds.
+#   desktop -> 100%. a tower has the cooling headroom to absorb the extra heat, so removing the low-power
+#              states entirely is a net win: no frequency ramp-up latency at all.
+$portableChassisTypes = @(8, 9, 10, 11, 12, 14, 30, 31, 32)
+$chassisTypes = (Get-CimInstance -ClassName Win32_SystemEnclosure -ErrorAction SilentlyContinue).ChassisTypes
+$hasBattery = [bool](Get-CimInstance -ClassName Win32_Battery -ErrorAction SilentlyContinue)
+$isPortable = $hasBattery -or [bool]($chassisTypes | Where-Object { $portableChassisTypes -contains $_ })
+if ($isPortable) {
+$minProcState = '0x00000005'
+Write-Info "Chassis portable detecte - etat processeur minimum maintenu a 5% (protection thermique)"
+} else {
+$minProcState = '0x00000064'
+Write-Info "Chassis fixe detecte - etat processeur minimum porte a 100% (performance maximale)"
+}
+powercfg /setacvalueindex 99999999-9999-9999-9999-999999999999 54533251-82be-4824-96c1-47b60b740d00 893dee8e-2bef-41e0-89c6-b55d0929964c $minProcState 2>$null
+powercfg /setdcvalueindex 99999999-9999-9999-9999-999999999999 54533251-82be-4824-96c1-47b60b740d00 893dee8e-2bef-41e0-89c6-b55d0929964c $minProcState 2>$null
 
 # system cooling policy active
 powercfg /setacvalueindex 99999999-9999-9999-9999-999999999999 54533251-82be-4824-96c1-47b60b740d00 94d3a615-a899-4ac5-ae2b-e4d8f634367f 001 2>$null
@@ -2229,7 +2243,12 @@ if (-not (Test-Path $p)) { return $default }
 $v = (Get-ItemProperty $p -Name ACSettingIndex -ErrorAction SilentlyContinue).ACSettingIndex
 if ($null -eq $v) { return $default } else { return [int]$v }
 }
-Add-Check "Etat processeur minimum <= 10% (idle sain)" { (Get-PowerAC '54533251-82be-4824-96c1-47b60b740d00' '893dee8e-2bef-41e0-89c6-b55d0929964c' 5) -le 10 }
+# expected value depends on the chassis: 5% on a portable (thermal headroom), 100% on a tower (no ramp latency)
+if ($isPortable) {
+Add-Check "Etat processeur minimum <= 10% (portable, idle sain)" { (Get-PowerAC '54533251-82be-4824-96c1-47b60b740d00' '893dee8e-2bef-41e0-89c6-b55d0929964c' 5) -le 10 }
+} else {
+Add-Check "Etat processeur minimum = 100% (fixe, performance max)" { (Get-PowerAC '54533251-82be-4824-96c1-47b60b740d00' '893dee8e-2bef-41e0-89c6-b55d0929964c' 100) -eq 100 }
+}
 Add-Check "Etat processeur maximum = 100%" { (Get-PowerAC '54533251-82be-4824-96c1-47b60b740d00' 'bc5038f7-23e0-4960-96da-33abaf5935ec' 100) -eq 100 }
 Add-Check "Veille processeur (C-states) active" { (Get-PowerAC '54533251-82be-4824-96c1-47b60b740d00' '5d76a2ca-e8c0-402f-a133-2158492d58ad' 0) -eq 0 }
 Add-Check "Core parking desactive" { (Get-PowerAC '54533251-82be-4824-96c1-47b60b740d00' '0cc5b647-c1df-4637-891a-dec35c318583' 100) -eq 100 }

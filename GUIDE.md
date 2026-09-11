@@ -18,7 +18,6 @@ WinSux-main/
 ├── LICENSE
 ├── README.md
 ├── GUIDE.md             <- ce fichier
-├── _backup_avant_audit/ <- copie des scripts d'origine avant l'audit
 └── Temp/
     ├── stepone.ps1      <- étape 1 (safe mode)
     ├── steptwo.ps1      <- étape 2 (boot normal)
@@ -60,7 +59,7 @@ Le script :
 - suppression des applications heritees (OneDrive, brlapi, GameInput, Remote Desktop, ancien Snipping Tool)
 - **téléchargement et installation automatiques du pilote NVIDIA** : identification du modèle, appel à l'API NVIDIA, téléchargement avec barre de progression, allègement du paquet, installation silencieuse
   - *aucune action requise* — une sélection manuelle n'est proposée qu'en dernier recours si les serveurs NVIDIA sont injoignables
-- profil NVIDIA Profile Inspector : power management max perf, G-Sync activé, **Resizable BAR forcé globalement**, Ultra Low Latency désactivé (voir plus bas)
+- profil NVIDIA Profile Inspector : power management max perf, G-Sync activé, Ultra Low Latency désactivé (voir plus bas)
 - **installation silencieuse de MSI Afterburner** + limite de puissance portée au maximum de la carte et cible thermique à 83 °C via `nvidia-smi`
 - optimisations : GameDVR off, HAGS on, MPO off, Nagle off, SysMain off, MSI mode GPU, DPC par cœur
 - optimisations CPU : pas de core parking, EPP performance, ramp-up « rocket », kernel non pagé, NTFS accéléré, prefetcher off, mitigations Spectre/Meltdown désactivées
@@ -72,15 +71,17 @@ Le script :
 
 ## Politique thermique
 Le pack cherche la performance **sous charge**, pas des fréquences bloquées au maximum en permanence :
-- **C-states laissés actifs** et **état minimal du processeur à 5 %** — les épingler à 100 % ajoute 15-25 °C au repos et fait *perdre* des performances, un package plus chaud atteignant sa limite thermique plus tôt et boostant moins loin.
+- **C-states laissés actifs**, et **état minimal du processeur adapté au châssis** : le script détecte automatiquement le type de machine.
+  - **Portable → 5 %.** Épingler à 100 % ajoute 15-25 °C au repos dans un châssis fin : le package part chaud, atteint sa limite thermique plus tôt et boost *moins* loin sous charge réelle. On y perd des FPS au lieu d'en gagner.
+  - **PC fixe → 100 %.** Une tour a la marge de refroidissement pour absorber cette chaleur, donc supprimer les états basse consommation est un gain net : plus aucune latence de montée en fréquence.
 - La réactivité vient de `EPP=0` + montée en fréquence « rocket », qui répondent en microsecondes.
 - La **limite de puissance GPU est portée au maximum de la carte** et la cible thermique fixée à **83 °C** via `nvidia-smi`. Aucune tâche planifiée ne rejoue ce réglage : MSI Afterburner en est désormais le seul propriétaire, sans quoi les deux s'écrasaient mutuellement toutes les 15 minutes.
 - Le GPU n'est **plus forcé** dans son P-state maximum au repos (économie de 20-30 W et 10-15 °C sur un bureau inactif).
 
 ## Deux arbitrages GPU à connaître
 
-**Resizable BAR forcé globalement.** Activer le ReBAR dans le BIOS ne suffit pas : le pilote NVIDIA ne l'applique qu'aux jeux figurant dans sa propre liste blanche, et le désactive silencieusement partout ailleurs. Le profil Inspector force donc `rBAR - Feature`, `rBAR - Options` et `rBAR - Size Limit` sur le profil de base, ce qui l'étend à tous les titres. Gain typique : 2 à 5 %, davantage dans les jeux gourmands en VRAM.
-→ *C'est le réglage le moins vérifié du pack : les identifiants numériques de ces trois options proviennent de la communauté, pas d'une documentation NVIDIA. S'ils sont erronés, l'import les ignore simplement — aucun risque, mais aucun effet non plus. Pour vérifier, ouvre `inspector.exe`, section « 5 - Common ».*
+**Resizable BAR : à activer à la main.** Activer le ReBAR dans le BIOS ne suffit pas : le pilote NVIDIA ne l'applique qu'aux jeux figurant dans sa propre liste blanche, et le désactive silencieusement partout ailleurs. Le profil Inspector **ne force plus** ces entrées : leurs identifiants numériques venaient de la communauté et non d'une documentation NVIDIA, et ils faisaient planter l'import du profil. Ils ont donc été retirés.
+→ *Pour l'activer quand même : ouvre `inspector.exe`, section « 5 - Common », et règle `rBAR - Feature`, `rBAR - Options` et `rBAR - Size Limit` à la main. Gain typique : 2 à 5 %, davantage dans les jeux gourmands en VRAM.*
 
 **Ultra Low Latency désactivé.** Ce mode limite la file de rendu pour réduire la latence, au prix de quelques images par seconde quand la carte est le facteur limitant. Le pack privilégie désormais les FPS bruts.
 → *Pour revenir en arrière : Panneau de configuration NVIDIA → Gérer les paramètres 3D → Mode faible latence → **Ultra**.*
