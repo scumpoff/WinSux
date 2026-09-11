@@ -59,7 +59,7 @@ Le script :
 - suppression des applications heritees (OneDrive, brlapi, GameInput, Remote Desktop, ancien Snipping Tool)
 - **téléchargement et installation automatiques du pilote NVIDIA** : identification du modèle, appel à l'API NVIDIA, téléchargement avec barre de progression, allègement du paquet, installation silencieuse
   - *aucune action requise* — une sélection manuelle n'est proposée qu'en dernier recours si les serveurs NVIDIA sont injoignables
-- profil NVIDIA Profile Inspector : power management max perf, G-Sync activé, Ultra Low Latency désactivé (voir plus bas)
+- profil NVIDIA Profile Inspector orienté FPS bruts : power management max perf, V-Sync forcé off, file de rendu limitée à 1 image, cache de shaders illimité, optimisations de filtrage actives, LOD bias clampé. **Ni G-Sync ni Resizable BAR** (voir plus bas)
 - **installation silencieuse de MSI Afterburner** + limite de puissance portée au maximum de la carte et cible thermique à 83 °C via `nvidia-smi`
 - optimisations : GameDVR off, HAGS on, MPO off, Nagle off, SysMain off, MSI mode GPU, DPC par cœur
 - optimisations CPU : pas de core parking, EPP performance, ramp-up « rocket », kernel non pagé, NTFS accéléré, prefetcher off, mitigations Spectre/Meltdown désactivées
@@ -82,8 +82,9 @@ Le pack cherche la performance **sous charge**, pas des fréquences bloquées au
 
 ## Deux arbitrages GPU à connaître
 
-**Resizable BAR : à activer à la main.** Activer le ReBAR dans le BIOS ne suffit pas : le pilote NVIDIA ne l'applique qu'aux jeux figurant dans sa propre liste blanche, et le désactive silencieusement partout ailleurs. Le profil Inspector **ne force plus** ces entrées : leurs identifiants numériques venaient de la communauté et non d'une documentation NVIDIA, et ils faisaient planter l'import du profil. Ils ont donc été retirés.
-→ *Pour l'activer quand même : ouvre `inspector.exe`, section « 5 - Common », et règle `rBAR - Feature`, `rBAR - Options` et `rBAR - Size Limit` à la main. Gain typique : 2 à 5 %, davantage dans les jeux gourmands en VRAM.*
+**Resizable BAR et G-Sync : volontairement absents du profil.**
+- *rBAR* : ses identifiants numériques venaient de profils communautaires et non de NVIDIA, et l'entrée « Size Limit » utilisait un type de valeur qu'Inspector refuse. L'import faisait planter l'outil — donc **tout** le profil échouait, pas seulement ces trois lignes. À activer à la main si tu y tiens : `inspector.exe`, section « 5 - Common », où l'outil valide les valeurs lui-même.
+- *G-Sync* : retiré. Sans effet de toute façon sur un portable Optimus, où l'écran est piloté par l'iGPU et non par la carte NVIDIA.
 
 **Ultra Low Latency désactivé.** Ce mode limite la file de rendu pour réduire la latence, au prix de quelques images par seconde quand la carte est le facteur limitant. Le pack privilégie désormais les FPS bruts.
 → *Pour revenir en arrière : Panneau de configuration NVIDIA → Gérer les paramètres 3D → Mode faible latence → **Ultra**.*

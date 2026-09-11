@@ -921,36 +921,6 @@ $nipfile = @'
         <ValueType>Dword</ValueType>
       </ProfileSetting>
       <ProfileSetting>
-        <SettingNameInfo>GSYNC - Application Mode</SettingNameInfo>
-        <SettingID>294973784</SettingID>
-        <SettingValue>0</SettingValue>
-        <ValueType>Dword</ValueType>
-      </ProfileSetting>
-      <ProfileSetting>
-        <SettingNameInfo>GSYNC - Application State</SettingNameInfo>
-        <SettingID>279476687</SettingID>
-        <SettingValue>4</SettingValue>
-        <ValueType>Dword</ValueType>
-      </ProfileSetting>
-      <ProfileSetting>
-        <SettingNameInfo>GSYNC - Global Feature</SettingNameInfo>
-        <SettingID>278196567</SettingID>
-        <SettingValue>1</SettingValue>
-        <ValueType>Dword</ValueType>
-      </ProfileSetting>
-      <ProfileSetting>
-        <SettingNameInfo>GSYNC - Global Mode</SettingNameInfo>
-        <SettingID>278196727</SettingID>
-        <SettingValue>2</SettingValue>
-        <ValueType>Dword</ValueType>
-      </ProfileSetting>
-      <ProfileSetting>
-        <SettingNameInfo>GSYNC - Indicator Overlay</SettingNameInfo>
-        <SettingID>268604728</SettingID>
-        <SettingValue>0</SettingValue>
-        <ValueType>Dword</ValueType>
-      </ProfileSetting>
-      <ProfileSetting>
         <SettingNameInfo>Maximum Pre-Rendered Frames</SettingNameInfo>
         <SettingID>8102046</SettingID>
         <SettingValue>1</SettingValue>
@@ -974,13 +944,12 @@ $nipfile = @'
         <SettingValue>0</SettingValue>
         <ValueType>Dword</ValueType>
       </ProfileSetting>
-      <!-- the three rBAR settings that used to sit here have been removed.
-           they were the one part of this profile whose numeric setting IDs came from community
-           profiles rather than from NVIDIA, and the "Size Limit" entry was declared as Qword, a value
-           type NVIDIA Profile Inspector does not accept. Importing it crashed the tool, which meant
-           the ENTIRE profile failed to apply - every other setting in this file included.
-           Force Resizable BAR by hand instead: inspector.exe, section "5 - Common", where the tool
-           validates the values itself. -->
+      <!-- deliberately absent from this profile: Resizable BAR and G-SYNC.
+           rBAR: its numeric setting IDs came from community profiles rather than from NVIDIA, and the
+           "Size Limit" entry used a value type Inspector rejects. Importing it crashed the tool, so the
+           ENTIRE profile failed to apply - every other setting here included.
+           G-SYNC: removed on request. It also has no effect on an Optimus laptop, where the panel is
+           driven by the integrated GPU rather than by the NVIDIA card. -->
       <ProfileSetting>
         <SettingNameInfo>Vertical Sync</SettingNameInfo>
         <SettingID>11041231</SettingID>
@@ -1064,9 +1033,12 @@ $nipfile = @'
         <ValueType>Dword</ValueType>
       </ProfileSetting>
       <ProfileSetting>
+        <!-- on. this was the one filtering optimisation left disabled while the two anisotropic ones
+             above are enabled and texture quality is already set to performance - an inconsistency that
+             cost framerate for no visual benefit at this quality level. -->
         <SettingNameInfo>Texture Filtering - Trilinear Optimization</SettingNameInfo>
         <SettingID>3066610</SettingID>
-        <SettingValue>0</SettingValue>
+        <SettingValue>1</SettingValue>
         <ValueType>Dword</ValueType>
       </ProfileSetting>
       <ProfileSetting>
