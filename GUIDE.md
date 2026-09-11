@@ -64,9 +64,9 @@ Le script :
 - optimisations : GameDVR off, HAGS on, MPO off, Nagle off, SysMain off, MSI mode GPU, DPC par cœur
 - optimisations CPU : pas de core parking, EPP performance, ramp-up « rocket », kernel non pagé, NTFS accéléré, prefetcher off, mitigations Spectre/Meltdown désactivées
 - plan d'alimentation Ultimate Performance, résolution du minuteur système
-- **outils d'entretien** : taux de rafraîchissement maximum forcé sur tous les écrans, tâche d'entretien automatique au démarrage, et un dossier **Entretien PC** sur le bureau avec 14 raccourcis
+- **outils d'entretien** : taux de rafraîchissement maximum forcé sur tous les écrans, tâche d'entretien automatique au démarrage, et un dossier **Entretien PC** sur le bureau avec 15 raccourcis
 - nettoyage disque + point de restauration
-- **rapport de vérification** : 23 contrôles relus depuis l'état réel du système, affichés OK/ÉCHEC et enregistrés dans `C:\ProgramData\Optimisation\rapport.txt`
+- **rapport de vérification** : 27 contrôles relus depuis l'état réel du système, affichés OK/ÉCHEC et enregistrés dans `C:\ProgramData\Optimisation\rapport.txt`
 - **redémarrage final automatique** (20 s, le temps de lire le rapport)
 
 ## Politique thermique
