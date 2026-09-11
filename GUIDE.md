@@ -75,7 +75,7 @@ Le pack cherche la performance **sous charge**, pas des fréquences bloquées au
   - **Portable → 5 %.** Épingler à 100 % ajoute 15-25 °C au repos dans un châssis fin : le package part chaud, atteint sa limite thermique plus tôt et boost *moins* loin sous charge réelle. On y perd des FPS au lieu d'en gagner.
   - **PC fixe → 100 %.** Une tour a la marge de refroidissement pour absorber cette chaleur, donc supprimer les états basse consommation est un gain net : plus aucune latence de montée en fréquence.
 - La réactivité vient de `EPP=0` + montée en fréquence « rocket », qui répondent en microsecondes.
-- La **limite de puissance GPU est portée au maximum de la carte** et la cible thermique fixée à **83 °C** via `nvidia-smi`. Aucune tâche planifiée ne rejoue ce réglage : MSI Afterburner en est désormais le seul propriétaire, sans quoi les deux s'écrasaient mutuellement toutes les 15 minutes.
+- La **limite de puissance GPU est portée au maximum de la carte** et la cible thermique fixée à **83 °C** via `nvidia-smi`. Ce réglage ne survit pas à un redémarrage — le mode persistance de `nvidia-smi` n'existe pas sous Windows, et le profil Afterburner ne transporte que des réglages d'interface. Une tâche planifiée **au démarrage uniquement** le réapplique donc à chaque boot. Elle ne rejoue plus le réglage toutes les 15 minutes : c'était cette répétition qui entrait en conflit avec Afterburner, pas le fait de restaurer la valeur une fois au boot.
 - Le GPU n'est **plus forcé** dans son P-state maximum au repos (économie de 20-30 W et 10-15 °C sur un bureau inactif).
 
 ## Deux arbitrages GPU à connaître

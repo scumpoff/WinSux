@@ -1183,6 +1183,27 @@ if ($maxLine) {
 $maxLimit = [math]::Floor([double]$maxLine.Matches[0].Groups[1].Value)
 & nvidia-smi -pl $maxLimit 2>$null | Out-Null
 Write-Info "Limite de puissance portee a $maxLimit W"
+
+# nvidia-smi power limits do NOT survive a reboot on windows: persistence mode (-pm 1) is a linux-only
+# feature, WDDM resets the limit to the card default every boot. and the afterburner profile written above
+# only carries ui settings - no power limit - so without this the max power limit is lost on the very next
+# restart, which this script performs a few minutes later.
+# at startup ONLY (no 15-minute repeat): a one-shot at boot cannot fight afterburner the way the old
+# repeating task did, it just restores the limit once and then leaves the card alone.
+$persistentDir = "$env:ProgramData\Optimisation"
+New-Item -Path $persistentDir -ItemType Directory -Force -ErrorAction SilentlyContinue | Out-Null
+$plScript = "$persistentDir\powerlimit.ps1"
+@"
+# re-apply the gpu power limit after boot - see the note in steptwo.ps1
+Start-Sleep -Seconds 45
+& nvidia-smi -pl $maxLimit 2>`$null | Out-Null
+& nvidia-smi -gtt 83 2>`$null | Out-Null
+"@ | Set-Content -Path $plScript -Force
+$plAction = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$plScript`""
+$plTrigger = New-ScheduledTaskTrigger -AtStartup
+$plPrincipal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -RunLevel Highest
+Register-ScheduledTask -TaskName "GPU Power Limit" -Action $plAction -Trigger $plTrigger -Principal $plPrincipal -Force -ErrorAction SilentlyContinue | Out-Null
+Write-Info "Limite de puissance reappliquee automatiquement a chaque demarrage"
 }
 & nvidia-smi -gtt 83 2>$null | Out-Null
 } catch { }
@@ -2253,6 +2274,14 @@ Add-Check "Etat processeur maximum = 100%" { (Get-PowerAC '54533251-82be-4824-96
 Add-Check "Veille processeur (C-states) active" { (Get-PowerAC '54533251-82be-4824-96c1-47b60b740d00' '5d76a2ca-e8c0-402f-a133-2158492d58ad' 0) -eq 0 }
 Add-Check "Core parking desactive" { (Get-PowerAC '54533251-82be-4824-96c1-47b60b740d00' '0cc5b647-c1df-4637-891a-dec35c318583' 100) -eq 100 }
 Add-Check "MSI Afterburner installe" { Test-Path "${env:ProgramFiles(x86)}\MSI Afterburner\MSIAfterburner.exe" }
+# the power limit itself is reset by windows on every boot, so what matters is that the restore task exists
+Add-Check "Tache limite de puissance GPU" { (Get-ScheduledTask -TaskName 'GPU Power Limit' -ErrorAction SilentlyContinue) -ne $null }
+Add-Check "Limite de puissance GPU au maximum" {
+$r = & nvidia-smi -q -d POWER 2>$null
+$cur = ($r | Select-String "Current Power Limit\s*:\s*([\d.]+)").Matches[0].Groups[1].Value
+$max = ($r | Select-String "Max Power Limit\s*:\s*([\d.]+)").Matches[0].Groups[1].Value
+[math]::Abs([double]$cur - [double]$max) -lt 1
+}
 Add-Check "Dossier Entretien PC sur le bureau" { Test-Path "$env:USERPROFILE\Desktop\Entretien PC" }
 Add-Check "Tache taux de rafraichissement" { (Get-ScheduledTask -TaskName 'Taux de rafraichissement maximum' -ErrorAction SilentlyContinue) -ne $null }
 Add-Check "Tache entretien automatique" { (Get-ScheduledTask -TaskName 'Entretien automatique' -ErrorAction SilentlyContinue) -ne $null }
