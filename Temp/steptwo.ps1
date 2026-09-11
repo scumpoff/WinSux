@@ -1048,9 +1048,13 @@ $nipfile = @'
         <ValueType>Dword</ValueType>
       </ProfileSetting>
       <ProfileSetting>
+        <!-- clamp, not allow. a negative LOD bias sharpens textures on paper, but on any surface in
+             motion it produces shimmering, and the effect is amplified by the performance-oriented
+             texture filtering quality set just below. clamping costs no framerate and removes the
+             single most visible source of image instability in this profile. -->
         <SettingNameInfo>Texture Filtering - Negative LOD Bias</SettingNameInfo>
         <SettingID>1686376</SettingID>
-        <SettingValue>0</SettingValue>
+        <SettingValue>1</SettingValue>
         <ValueType>Dword</ValueType>
       </ProfileSetting>
       <ProfileSetting>
